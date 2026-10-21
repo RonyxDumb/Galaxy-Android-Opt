@@ -55,6 +55,7 @@
         <!-- Native Game Engine Activity -->
         <activity
             android:name="com.openport.galaxyandroid.GameActivity"
+            android:process=":game"
             android:exported="true"
             android:excludeFromRecents="false"
             android:launchMode="singleTask"
