@@ -26,12 +26,8 @@ void port_android_exit_to_launcher() {
 }
 
 float port_get_display_aspect(void) {
-    int w = mobile_core::MobileApp::get().screenWidth();
-    int h = mobile_core::MobileApp::get().screenHeight();
-    if (h > 0) {
-        return (float)w / (float)h;
-    }
     return 16.0f / 9.0f;
+
 }
 
 int port_is_fullscreen_aspect(void) {

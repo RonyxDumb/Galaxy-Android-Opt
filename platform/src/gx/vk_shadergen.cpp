@@ -45,6 +45,7 @@ struct SpirvPair {
 std::mutex sSpirvCacheLock;
 std::string sSpirvCachePath;
 std::unordered_map<uint64_t, SpirvPair> sSpirvCache;
+std::unordered_map<ShaderUid, uint64_t, ShaderUidHash> sUidKeys;
 bool sSpirvCacheLoaded = false;
 bool sSpirvCacheHeaderWritten = false;
 
@@ -198,8 +199,20 @@ bool compileShaderToSPIRV(const std::string& src, bool isVertex, std::vector<uin
     return true;
 }
 
-bool lookupVulkanShader(const ShaderUid& uid, std::vector<uint32_t>& outVsSpirv, std::vector<uint32_t>& outFsSpirv) {
+uint64_t cachedSourceKey(const ShaderUid& uid) {
+    {
+        std::lock_guard<std::mutex> lock(sSpirvCacheLock);
+        auto found = sUidKeys.find(uid);
+        if (found != sUidKeys.end()) return found->second;
+    }
     const uint64_t key = sourceKey(genVulkanVertexShader(uid), genVulkanFragmentShader(uid));
+    std::lock_guard<std::mutex> lock(sSpirvCacheLock);
+    sUidKeys.emplace(uid, key);
+    return key;
+}
+
+bool lookupVulkanShader(const ShaderUid& uid, std::vector<uint32_t>& outVsSpirv, std::vector<uint32_t>& outFsSpirv) {
+    const uint64_t key = cachedSourceKey(uid);
     std::lock_guard<std::mutex> lock(sSpirvCacheLock);
     if (!sSpirvCacheLoaded) loadSpirvCacheLocked();
     auto it = sSpirvCache.find(key);
@@ -215,6 +228,7 @@ bool compileVulkanShader(const ShaderUid& uid, std::vector<uint32_t>& outVsSpirv
     const uint64_t key = sourceKey(vsSrc, fsSrc);
     {
         std::lock_guard<std::mutex> lock(sSpirvCacheLock);
+        sUidKeys.emplace(uid, key);
         if (!sSpirvCacheLoaded) loadSpirvCacheLocked();
         auto it = sSpirvCache.find(key);
         if (it != sSpirvCache.end()) {
@@ -247,6 +261,7 @@ void setVulkanShaderCachePath(const char* path) {
     sSpirvCacheLoaded = false;
     sSpirvCacheHeaderWritten = false;
     sSpirvCache.clear();
+    sUidKeys.clear();
 }
 
 void prewarmCommonShaders() {

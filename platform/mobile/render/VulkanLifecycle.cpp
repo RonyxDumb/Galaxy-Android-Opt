@@ -83,10 +83,10 @@ bool VulkanLifecycle::handleDeviceLoss(ANativeWindow* window, int& screenW, int&
     return false;
 }
 
-void VulkanLifecycle::initCaches(const std::string& internalPath) {
+void VulkanLifecycle::initCaches(const std::string& internalPath, const std::string& dataRoot) {
     gpu::setVkPipelineCachePath((internalPath + "/vk_pipeline_cache.bin").c_str());
     gpu::setVulkanShaderCachePath((internalPath + "/vk_shaders.bin").c_str());
-    gpu::ShaderInventory::get().init(internalPath, "/sdcard/GalaxyData");
+    gpu::ShaderInventory::get().init(internalPath, dataRoot);
     // Stage A: Compile missing SPIR-V shaders before device bringup with bounded workers (4 threads)
     gpu::ShaderInventory::get().compileAllSpirv(4);
 }

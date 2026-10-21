@@ -1,10 +1,12 @@
 import argparse
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
 import zipfile
+import xml.etree.ElementTree as ET
 
 from tools.apk_env import (
     ROOT, SDK, BUILD_TOOLS_DIR, AAPT2, ZIPALIGN, APKSIGNER, D8,
@@ -17,6 +19,31 @@ BUILD_MOBILE = os.environ.get("BUILD_DIR", os.path.join(ROOT, "build-mobile"))
 OUT = os.path.join(ROOT, "out-mobile")
 INSTALLER_DIR = os.path.join(ROOT, "installer-mobile")
 MANIFEST = os.path.join(ROOT, "platform", "mobile", "AndroidManifest.xml")
+
+def package_manifest(application_id=None):
+    """Give a locally signed tester its own install identity and Java namespace."""
+    tree = ET.parse(MANIFEST)
+    root = tree.getroot()
+    java_package = root.get("package")
+    if not application_id:
+        return MANIFEST, java_package
+    if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+", application_id):
+        raise ValueError("Invalid Android application ID")
+    root.set("package", application_id)
+    ns = "{http://schemas.android.com/apk/res/android}"
+    app = root.find("application")
+    app.set(ns + "label", "Super Mario Galaxy")
+    for activity in app.findall("activity"):
+        name = activity.get(ns + "name", "")
+        if name.startswith("."):
+            activity.set(ns + "name", java_package + name)
+        elif "." not in name:
+            activity.set(ns + "name", java_package + "." + name)
+    ET.register_namespace("android", ns[1:-1])
+    path = os.path.join(OUT, "manifest", "AndroidManifest.xml")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tree.write(path, encoding="utf-8", xml_declaration=True)
+    return path, java_package
 
 def safe_cmd_str(cmd):
     masked = []
@@ -61,8 +88,11 @@ def main():
     parser.add_argument("--channel", choices=["tester", "production"],
                         default=os.environ.get("GALAXY_RELEASE_CHANNEL", "tester").lower(),
                         help="Build channel: 'tester' or 'production'")
+    parser.add_argument("--application-id", help="Separate install ID for a locally signed tester APK")
     args, unknown = parser.parse_known_args()
     channel = args.channel
+    if args.application_id and channel != "tester":
+        parser.error("--application-id is available only for tester builds")
 
     print(f"=== Packaging Unified GalaxyAndroid.apk [channel: {channel}] ===")
     print(f"  SDK: {SDK}")
@@ -77,6 +107,7 @@ def main():
 
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(os.path.join(ROOT, "out"), exist_ok=True)
+    build_manifest, java_package = package_manifest(args.application_id)
 
     gen_dir = os.path.join(OUT, "gen")
     classes_dir = os.path.join(OUT, "classes")
@@ -102,7 +133,8 @@ def main():
     run([
         AAPT2, "link",
         "-o", base_apk,
-        "--manifest", MANIFEST,
+        "--manifest", build_manifest,
+        "--custom-package", java_package,
         "-R", res_zip,
         "--auto-add-overlay",
         "-I", ANDROID_JAR,
@@ -188,6 +220,12 @@ def main():
                     add_file(p, os.path.relpath(p, INSTALLER_DIR))
 
         vendor_zip = os.path.join(INSTALLER_DIR, "vendor", "python", "stdlib", "pythonhome.zip")
+        # Build the installed ROM's material inventory during extraction.
+        for name in ("install_manifest.py", "generate_shader_manifest.py", "manifest_schema.py",
+                     "j3d_mat3_parser.py", "j3d_shape_attrs.py", "j3d_gx_state.py",
+                     "j3d_material_state.py", "j3d_pipeline_key.py"):
+            add_file(os.path.join(ROOT, "tools", "cook", name), "assets/scripts/" + name)
+        add_file(os.path.join(ROOT, "tools", "rarc.py"), "assets/scripts/manifest_archive.py")
         if os.path.exists(vendor_zip):
             add_file(vendor_zip, "assets/pythonhome.zip")
 

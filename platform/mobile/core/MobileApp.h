@@ -41,6 +41,7 @@ private:
     bool mWindowReady = false;
     bool mVkReady = false;
     bool mGameBooted = false;
+    bool mAppPaused = false;
     int mScreenWidth = 0;
     int mScreenHeight = 0;
 

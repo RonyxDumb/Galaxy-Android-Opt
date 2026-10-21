@@ -44,7 +44,8 @@ void VkRenderer::executeDrawPass(VkCommandBuffer cmd, const Frame& f, const Prep
     DrawTexStats texStats;
     bool diagLog = (mFrameNumber % 300 == 0);
 
-    for (const Item& it : items) {
+    for (size_t index = 0; index < items.size(); index++) {
+        const Item& it = items[index];
         if (it.type == IT_MARKER) {
             inHudSection = (it.marker == MARK_HUD_BEGIN);
             continue;
@@ -152,7 +153,9 @@ void VkRenderer::executeDrawPass(VkCommandBuffer cmd, const Frame& f, const Prep
             LOGW("VkRenderer: draw references shader uid %u out of range (%zu)", it.uid, p.uids.size());
             continue;
         }
-        VkPipeline pipeline = getPipeline(it, p.uids[it.uid]);
+        // Exact handles were resolved before command recording. Do not repeat
+        // shader generation, pipeline-key hashing or driver work per draw.
+        VkPipeline pipeline = mDrawPipelines[index];
         if (pipeline == VK_NULL_HANDLE) continue;
         bool pipelineChanged = false;
         if (pipeline != lastPipeline) {

@@ -10,7 +10,6 @@ bool VkRenderer::init(ANativeWindow* window) {
     mHeight = ANativeWindow_getHeight(window);
 
     LOGI("Initializing Vulkan 1.0 native renderer (%dx%d)...", mWidth, mHeight);
-    startShaderWorker();
 
     if (!createInstance()) {
         LOGE("Failed to create Vulkan 1.0 instance");
@@ -217,6 +216,7 @@ bool VkRenderer::init(ANativeWindow* window) {
 
     mFatal = false;
     mInitialized = true;
+    startShaderWorker();
     LOGI("Vulkan 1.0 native renderer initialized successfully on %s", mDeviceProperties.deviceName);
     return true;
 }

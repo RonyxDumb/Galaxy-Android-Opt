@@ -16,7 +16,7 @@ void TouchInputHandler::updateActivePointers(
     uint32_t& touchButtons) {
 
     mBtnDpadLeft = mBtnDpadRight = mBtnDpadUp = mBtnDpadDown = false;
-    bool stickFound = false, starStickFound = false, cameraSwipeFound = false;
+    bool stickFound = false, starStickFound = false;
     bool downA = false, downB = false, downZ = false, downSpin = false, downPlus = false;
 
     float maxDistA = (bl.ar * 1.30f) * (bl.ar * 1.30f);
@@ -91,22 +91,6 @@ void TouchInputHandler::updateActivePointers(
             mPointerX = std::max(-1.0f, std::min(1.0f, mPointerX + mStarStickX * slew));
             mPointerY = std::max(-1.0f, std::min(1.0f, mPointerY - mStarStickY * slew));
             mPointerActiveFrames = 120;
-        } else if (role == TouchRole::CAMERA_SWIPE) {
-            cameraSwipeFound = true;
-            if (slot >= 0) {
-                float dx = px - mTouches[slot].lastX;
-                float dy = py - mTouches[slot].lastY;
-                mTouches[slot].lastX = px;
-                mTouches[slot].lastY = py;
-                float deadzone = 1.5f * scale;
-                if (fabsf(dx) > deadzone || fabsf(dy) > deadzone) {
-                    float normW = (float)(vpW > 0 ? vpW : 1920);
-                    float normH = (float)(vpH > 0 ? vpH : 1080);
-                    float sens = settings.stickSensitivity * settings.starStickSensitivity;
-                    pad.rightStickX += -(dx / normW) * 6.2831853f * sens * 2.25f;
-                    pad.rightStickY += -(dy / normH) * 2.2f * sens * 2.25f;
-                }
-            }
         } else {
             bool hitButton = false;
             if (settings.showControls) {
@@ -135,17 +119,7 @@ void TouchInputHandler::updateActivePointers(
                 }
                 mPointerActiveFrames = 120;
 
-                if (settings.touchCamera && !settings.starStick && slot >= 0) {
-                    float deadzone = 1.5f * scale;
-                    if (fabsf(dx) > deadzone || fabsf(dy) > deadzone) {
-                        cameraSwipeFound = true;
-                        float normW = (float)vpW;
-                        float normH = (float)vpH;
-                        float sens = settings.stickSensitivity * settings.starStickSensitivity;
-                        pad.rightStickX += -(dx / normW) * 6.2831853f * sens * 2.25f;
-                        pad.rightStickY += -(dy / normH) * 2.2f * sens * 2.25f;
-                    }
-                }
+
             }
             if (slot >= 0) { mTouches[slot].lastX = px; mTouches[slot].lastY = py; }
         }
@@ -156,7 +130,7 @@ void TouchInputHandler::updateActivePointers(
         if (!mBtnAPressed && settings.haptics) port_android_vibrate(22);
     }
     if (downB) {
-        touchButtons |= 0x0C00;
+        touchButtons |= 0x0400;
         if (!mBtnBPressed && settings.haptics) port_android_vibrate(18);
     }
     if (downZ) {
@@ -234,7 +208,7 @@ void TouchInputHandler::assignTouchRoleOnDown(
             stickEligible = (px <= w * 0.40f && py >= h * 0.45f);
         } else {
             float d2 = (px - defaultStickX)*(px - defaultStickX) + (py - defaultStickY)*(py - defaultStickY);
-            stickEligible = (d2 <= (stickBaseR * 2.2f)*(stickBaseR * 2.2f));
+            stickEligible = (d2 <= (stickBaseR * 1.15f)*(stickBaseR * 1.15f));
         }
     }
 

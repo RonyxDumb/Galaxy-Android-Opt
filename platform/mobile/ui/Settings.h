@@ -6,10 +6,10 @@ namespace mobile_ui {
 
 struct Settings {
     bool showControls = true;
-    bool fullscreen = true;
+    bool fullscreen = false;
     float opacity = 0.65f;
     float scale = 1.0f;
-    bool dynamicStick = true;
+    bool dynamicStick = false;
     float stickOffsetX = 0.0f;
     float stickOffsetY = 0.0f;
     float buttonOffsetX = 0.0f;
@@ -30,11 +30,11 @@ struct Settings {
     float dpadOffsetY = 0.0f;
 
     // NVIDIA Shield and Remaster Mods
-    bool modShieldTextures = true;
-    bool modShieldCutscenes = true;
-    bool modShieldControls = true;
-    bool modClassicGamepadUI = true;
-    bool modRiivolution = true;
+    bool modShieldTextures = false;
+    bool modShieldCutscenes = false;
+    bool modShieldControls = false;
+    bool modClassicGamepadUI = false;
+    bool modRiivolution = false;
 
     // Advanced Gameplay Mods
     bool modFly = false;
@@ -51,7 +51,7 @@ struct Settings {
     bool haptics = false;
     int targetFps = 60;
     int preferredRefreshRate = 60;
-    bool adaptiveFps = true;
+    bool adaptiveFps = false;
     bool batterySaver = false;
     bool gyroAiming = false;
     bool gyroInvertX = false;
@@ -60,8 +60,8 @@ struct Settings {
     bool starStick = false;
     float stickSensitivity = 1.0f;
     float starStickSensitivity = 1.0f;
-    int rightStickMode = 0;
-    bool touchCamera = true;
+    int rightStickMode = 1;
+    bool touchCamera = false;
 
     bool fullTouchMode = true;
     int perfHudMode = 0;

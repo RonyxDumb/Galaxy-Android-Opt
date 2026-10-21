@@ -1,8 +1,10 @@
 #include "vk_shadergen_common.h"
+#include "vk_uber.h"
 
 namespace gpu {
 
 std::string genVulkanFragmentShader(const ShaderUid& u) {
+    if (isUberShader(u)) return genUberFragmentShader();
     VulkanShaderGenOut o;
     o.w("#version 450\n");
     o.s += kVulkanUniformBlocksFs;
@@ -61,6 +63,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         }
     }
 
+    o.w("  int alphabump = 0;\n");
     uint32_t lastColorDest = 0, lastAlphaDest = 0;
     for (uint32_t s = 0; s < u.numTevStages; s++) {
         uint32_t order = (u.tevOrder[s / 2] >> ((s & 1) * 12)) & 0xFFF;
@@ -78,6 +81,11 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
             uv = b;
         }
         uint32_t ind = u.indCmd[s];
+        uint32_t bumpTex = ind & 3, bumpSel = (ind >> 7) & 3;
+        if (bumpSel && bumpTex < u.numIndStages) {
+            static const uint32_t shifts[4] = {0, 5, 4, 3};
+            o.w("  alphabump = (int(ind%u.%c) << %u) & 248;\n", bumpTex, "xyz"[bumpSel - 1], shifts[(ind >> 2) & 3]);
+        }
         if (u.numIndStages && ind) {
             uint32_t bt = ind & 3, bias = (ind >> 4) & 7, mtx = (ind >> 9) & 15;
             if (bt < u.numIndStages && mtx != 0) {
@@ -118,16 +126,20 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         } else {
             o.w("  tex = ivec4(0);\n");
         }
-        const char* rasSrc = (chan == 0 || chan == 2 || chan == 4) ? "v_clr0" : (chan == 1 || chan == 3 || chan == 5) ? "v_clr1" : "vec4(0.0)";
+        const char* rasSrc = chan == 0 ? "v_clr0" : chan == 1 ? "v_clr1" : "vec4(0.0)";
         o.w("  vec4 safeRas%u = (any(isnan(%s)) || any(isinf(%s))) ? vec4(0.0) : clamp(%s, 0.0, 1.0);\n", s, rasSrc, rasSrc, rasSrc);
         o.w("  ras = ivec4(round(safeRas%u%s * 255.0));\n", s, vkSwapString(u, rswap).c_str());
+        if (chan == 5) o.w("  ras = ivec4(alphabump);\n");
+        if (chan == 6) o.w("  ras = ivec4(alphabump | (alphabump >> 5));\n");
         o.w("  kc = %s;\n  ka = %s;\n", vkKonstColor(kcsel).c_str(), vkKonstAlpha(kasel).c_str());
         {
             uint32_t ca = (cc >> 12) & 15, cb = (cc >> 8) & 15, cc2 = (cc >> 4) & 15, cd = cc & 15;
             uint32_t aa = (ac >> 13) & 7, ab = (ac >> 10) & 7, ac2 = (ac >> 7) & 7, ad = (ac >> 4) & 7;
-            o.w("  tevin_a = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[ca], kVkAlphaIn[aa]);
-            o.w("  tevin_b = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[cb], kVkAlphaIn[ab]);
-            o.w("  tevin_c = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[cc2], kVkAlphaIn[ac2]);
+            // GX A/B/C inputs wrap to 8 bits; saturating signed intermediates
+            // changes multi-stage materials (e.g. -1 must feed 255, not zero).
+            o.w("  tevin_a = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[ca], kVkAlphaIn[aa]);
+            o.w("  tevin_b = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[cb], kVkAlphaIn[ab]);
+            o.w("  tevin_c = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[cc2], kVkAlphaIn[ac2]);
             o.w("  tevin_d = ivec4(clamp(%s, ivec3(-1024), ivec3(1023)), clamp(%s, -1024, 1023));\n", kVkColorIn[cd], kVkAlphaIn[ad]);
         }
 
@@ -181,18 +193,18 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         }
     }
 
-    // The TEV's output is 8 bits wide: clamp RGB and mask alpha (Mario's eyelids rely on 8-bit alpha wrap for test).
-    o.w("  ivec4 outi = ivec4(clamp(%s.rgb, ivec3(0), ivec3(255)), int(uint(%s.a) & 255u));\n", kVkDest[lastColorDest], kVkDest[lastAlphaDest]);
+    // The final RGB and alpha channels both retain the low eight bits.
+    o.w("  ivec4 outi = ivec4(ivec3(uvec3(%s.rgb) & uvec3(255u)), int(uint(%s.a) & 255u));\n", kVkDest[lastColorDest], kVkDest[lastAlphaDest]);
     o.w("  vec4 outc = vec4(outi) / 255.0;\n");
     // Alpha test.
     {
         uint32_t f0 = u.alphaFunc & 7, f1 = (u.alphaFunc >> 3) & 7, logic = (u.alphaFunc >> 6) & 3;
         if (!(f0 == 7 && f1 == 7)) {
             o.w("  float a = float(outi.a);\n");
-            const char* t0 = vkAlphaTest(f0, "alphaRef.x");
-            const char* t1 = vkAlphaTest(f1, "alphaRef.y");
+            std::string t0 = vkAlphaTest(f0, "alphaRef.x");
+            std::string t1 = vkAlphaTest(f1, "alphaRef.y");
             const char* ops[4] = {"&&", "||", "!=", "=="};
-            o.w("  if (!((%s) %s (%s))) discard;\n", t0, ops[logic], t1);
+            o.w("  if (!((%s) %s (%s))) discard;\n", t0.c_str(), ops[logic], t1.c_str());
         }
     }
     // Z texture.

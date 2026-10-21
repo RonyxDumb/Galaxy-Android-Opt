@@ -36,32 +36,27 @@ static const size_t kLibSize = 0x08000000u;
 
 typedef void (*PortAndroidMain)(struct android_app* app, uintptr_t windowBase, size_t windowSize);
 
-// True when the whole window is one untouched PROT_NONE reservation (the one
-// libreserve.so makes); otherwise logs the mappings that are in the way.
-static int windowPreReserved(void) {
+// Returns true only if the complete requested address range is covered by
+// PROT_NONE private mappings. A single reserved subrange is not sufficient.
+static int rangePreReserved(uintptr_t base, size_t size) {
     FILE* f = fopen("/proc/self/maps", "r");
-    if (!f) {
-        return 0;
-    }
-    int reserved = 0;
+    if (!f) return 0;
+
+    const unsigned long long end = (unsigned long long)base + size;
+    unsigned long long covered = (unsigned long long)base;
     char line[4352];
     while (fgets(line, sizeof(line), f)) {
-        unsigned long long lo, hi;
-        char perms[8];
-        if (sscanf(line, "%llx-%llx %7s", &lo, &hi, perms) != 3 || hi <= kWindowBase || lo >= kWindowBase + kWindowSize) {
+        unsigned long long lo = 0, hi = 0;
+        char perms[8] = {0};
+        if (sscanf(line, "%llx-%llx %7s", &lo, &hi, perms) != 3)
             continue;
-        }
-        if (lo <= kWindowBase && hi >= kWindowBase + kWindowSize && !strcmp(perms, "---p")) {
-            reserved = 1;
-        } else if (lo >= kWindowBase && hi <= kWindowBase + kWindowSize && !strcmp(perms, "---p")) {
-            reserved = 1;
-        } else {
-            line[strcspn(line, "\n")] = 0;
-            __android_log_print(ANDROID_LOG_WARN, "PetariVR", "in the game address window: %s", line);
-        }
+        if (hi <= covered) continue;
+        if (lo > covered || strcmp(perms, "---p") != 0) break;
+        covered = hi;
+        if (covered >= end) break;
     }
     fclose(f);
-    return reserved;
+    return covered >= end;
 }
 
 void android_main(struct android_app* app) {
@@ -71,7 +66,7 @@ void android_main(struct android_app* app) {
         if (win != MAP_FAILED) {
             munmap(win, kWindowSize);  // placed elsewhere: the kernel ignored MAP_FIXED_NOREPLACE
         }
-        if (!windowPreReserved()) {
+        if (!rangePreReserved(kWindowBase, kWindowSize)) {
             __android_log_print(ANDROID_LOG_WARN, "PetariVR",
                   "cannot reserve the full 1.5GB game address window at %p (errno %d); attempting piece-wise reservation",
                   (void*)kWindowBase, err);
@@ -87,9 +82,20 @@ void android_main(struct android_app* app) {
                 { 0xE0000000u, 0x00010000u },
             };
             for (size_t i = 0; i < sizeof(pieces)/sizeof(pieces[0]); i++) {
-                void* p = mmap((void*)pieces[i].addr, pieces[i].sz, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
-                if (p == MAP_FAILED) {
-                    LOG("Warning: piece-wise reservation failed at %p: %s", (void*)pieces[i].addr, strerror(errno));
+                // Never use MAP_FIXED here: it can silently destroy ART/JIT or
+                // other existing mappings, producing nondeterministic crashes.
+                if (rangePreReserved(pieces[i].addr, pieces[i].sz)) continue;
+                void* p = mmap((void*)pieces[i].addr, pieces[i].sz, PROT_NONE,
+                               MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE,
+                               -1, 0);
+                if (p != (void*)pieces[i].addr) {
+                    const int pieceErr = errno;
+                    if (p != MAP_FAILED) munmap(p, pieces[i].sz);
+                    // Another reservation might have appeared in the meantime.
+                    if (!rangePreReserved(pieces[i].addr, pieces[i].sz)) {
+                        FATAL("cannot safely reserve game range %p + %zu (errno %d)",
+                              (void*)pieces[i].addr, pieces[i].sz, pieceErr);
+                    }
                 }
             }
         }

@@ -116,8 +116,9 @@ public:
     size_t nearestUidDiff(const ShaderUid& uid, uint32_t* wordsOut, size_t maxWords) const;
 
 private:
-    void addEntryLocked(const ShaderUid& uid, const PipelineKey& key, const std::string& source, bool isRuntime);
+    bool addEntryLocked(const ShaderUid& uid, const PipelineKey& key, const std::string& source, bool isRuntime);
     mutable std::mutex mMutex;
+    std::mutex mSaveMutex;
     size_t mSavedRuntimeEntries = 0;
     std::string mCacheDir;
     std::string mInventoryFilePath;

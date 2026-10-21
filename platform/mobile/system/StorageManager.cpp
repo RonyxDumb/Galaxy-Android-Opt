@@ -39,14 +39,15 @@ bool StorageManager::checkGameFolder(const std::string& dir, bool* ready) {
     return true;
 }
 
-std::string StorageManager::findGameData(const std::string& extDir) {
+std::string StorageManager::findGameData(const std::string& extDir, const std::string& internalDir) {
     std::vector<std::string> candidates = {
+        extDir + "/GalaxyData",
+        internalDir + "/GalaxyData",
         "/sdcard/GalaxyData",
         "/sdcard/GalaxyData/game",
         "/storage/emulated/0/GalaxyData",
         "/storage/emulated/0/GalaxyData/game",
         extDir + "/game",
-        extDir + "/GalaxyData",
         extDir,
         "/sdcard/Android/data/com.openport.galaxyandroid/files/game",
         "/sdcard/Android/data/com.openport.galaxyandroid/files/GalaxyData",

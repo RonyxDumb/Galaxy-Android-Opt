@@ -50,7 +50,7 @@ public:
 
     bool needsRedraw() { return mDirty || mMenu.isOpen() || mToastTimer > 0.0f; }
 
-    bool isSettingsOpen() const { return mMenu.isOpen(); }
+    bool isSettingsOpen() const { return false; }
     void closeSettings() { mMenu.closeSettings(mSettings, mSave.savePath()); }
 
     void triggerSaveAnywhere();

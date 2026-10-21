@@ -2,9 +2,9 @@
 
 namespace gpu {
 
-void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int vpH) {
+bool VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int vpH) {
     std::lock_guard<std::recursive_mutex> lock(mRenderMutex);
-    if (!mInitialized || mFatal || mSwapchain == VK_NULL_HANDLE || target.colorView == VK_NULL_HANDLE || !target.hasValidContent) return;
+    if (!mInitialized || mFatal || mSwapchain == VK_NULL_HANDLE || target.colorView == VK_NULL_HANDLE) return false;
 
     if (mPresentFenceInFlight) {
         int64_t t0 = port_host_time_ns();
@@ -13,18 +13,30 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
         mPresentFenceInFlight = false;
         if (r != VK_SUCCESS) {
             markFatal("present", "vkWaitForFences on mPresentFence", (int)r);
-            return;
+            return false;
         }
     }
 
     uint32_t imageIndex = 0;
-    VkResult acquireRes = vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, mImageAvailableSem, VK_NULL_HANDLE, &imageIndex);
+    const int64_t acquireStartNs = port_host_time_ns();
+    VkResult acquireRes = vkAcquireNextImageKHR(mDevice, mSwapchain, 16000000ULL, mImageAvailableSem, VK_NULL_HANDLE, &imageIndex);
+    const int64_t acquireWaitNs = port_host_time_ns() - acquireStartNs;
+    port_perf_queue_wait(acquireWaitNs);
+    if (acquireWaitNs > 50000000LL) {
+        static int64_t lastAcquireWarningNs = 0;
+        const int64_t nowNs = port_host_time_ns();
+        if (nowNs - lastAcquireWarningNs > 1000000000LL) {
+            LOGW("Vulkan swapchain image acquire stall: %lld ms", (long long)(acquireWaitNs / 1000000LL));
+            lastAcquireWarningNs = nowNs;
+        }
+    }
+    if (acquireRes == VK_TIMEOUT || acquireRes == VK_NOT_READY) return false;
     if (acquireRes == VK_ERROR_OUT_OF_DATE_KHR) {
         onWindowResized(mWindow);
-        return;
+        return false;
     } else if (acquireRes != VK_SUCCESS && acquireRes != VK_SUBOPTIMAL_KHR) {
         markFatal("present", "vkAcquireNextImageKHR", (int)acquireRes);
-        return;
+        return false;
     }
 
     VkDescriptorSet presentSet = VK_NULL_HANDLE;
@@ -63,12 +75,12 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     VkResult beginRes = vkBeginCommandBuffer(mPresentCommandBuffer, &beginInfo);
     if (beginRes != VK_SUCCESS) {
         markFatal("present", "vkBeginCommandBuffer", (int)beginRes);
-        return;
+        return false;
     }
 
     if (imageIndex >= mSwapchainFramebuffers.size() || mSwapchainFramebuffers[imageIndex] == VK_NULL_HANDLE) {
         markFatal("present", "swapchain image without framebuffer", (int)imageIndex);
-        return;
+        return false;
     }
 
     VkRenderPassBeginInfo rpInfo{};
@@ -93,7 +105,7 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     if (qw > extW - qx) qw = extW - qx;
     if (qh > extH - qy) qh = extH - qy;
 
-    if (presentSet != VK_NULL_HANDLE && mPresentPipeline != VK_NULL_HANDLE && qw > 0 && qh > 0) {
+    if (target.hasValidContent && presentSet != VK_NULL_HANDLE && mPresentPipeline != VK_NULL_HANDLE && qw > 0 && qh > 0) {
         VkViewport vp{};
         vp.x = (float)qx;
         vp.y = (float)qy;
@@ -124,7 +136,7 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     VkResult endRes = vkEndCommandBuffer(mPresentCommandBuffer);
     if (endRes != VK_SUCCESS) {
         markFatal("present", "vkEndCommandBuffer", (int)endRes);
-        return;
+        return false;
     }
 
     VkSubmitInfo submitInfo{};
@@ -153,7 +165,7 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     VkSemaphore signalSemaphores[] = {presentWaitSem};
     if (presentWaitSem == VK_NULL_HANDLE) {
         markFatal("present", "no render-finished semaphore for the acquired image", 0);
-        return;
+        return false;
     }
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
@@ -162,7 +174,7 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     VkResult submitRes = vkQueueSubmit(mQueue, 1, &submitInfo, mPresentFence);
     if (submitRes != VK_SUCCESS) {
         markFatal("present", "vkQueueSubmit", (int)submitRes);
-        return;
+        return false;
     }
 
     mPresentFenceInFlight = true;
@@ -188,6 +200,7 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     } else if (presentRes != VK_SUCCESS) {
         markFatal("present", "vkQueuePresentKHR", (int)presentRes);
     }
+    return presentRes == VK_SUCCESS || presentRes == VK_SUBOPTIMAL_KHR;
 }
 
 }  // namespace gpu

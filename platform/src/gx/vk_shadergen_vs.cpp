@@ -1,8 +1,10 @@
 #include "vk_shadergen_common.h"
+#include "vk_uber.h"
 
 namespace gpu {
 
 std::string genVulkanVertexShader(const ShaderUid& u) {
+    if (isUberShader(u)) return genUberVertexShader(u);
     VulkanShaderGenOut o;
     o.w("#version 450\n");
     o.s += kVulkanUniformBlocksVs;
@@ -47,9 +49,7 @@ std::string genVulkanVertexShader(const ShaderUid& u) {
     }
     if (f & VF_NBT) {
         o.w("  bin = vec3(dot(fetch_rows(nr).xyz, a_bin), dot(fetch_rows(nr + 1u).xyz, a_bin), dot(fetch_rows(nr + 2u).xyz, a_bin));\n");
-        o.w("  bin = (dot(bin, bin) > 1e-6 && !any(isnan(bin)) && !any(isinf(bin))) ? normalize(bin) : vec3(0.0, 1.0, 0.0);\n");
         o.w("  tan = vec3(dot(fetch_rows(nr).xyz, a_tan), dot(fetch_rows(nr + 1u).xyz, a_tan), dot(fetch_rows(nr + 2u).xyz, a_tan));\n");
-        o.w("  tan = (dot(tan, tan) > 1e-6 && !any(isnan(tan)) && !any(isinf(tan))) ? normalize(tan) : vec3(1.0, 0.0, 0.0);\n");
     }
 
     o.w("  vec4 v4 = vec4(pos, 1.0);\n");
@@ -87,107 +87,8 @@ std::string genVulkanVertexShader(const ShaderUid& u) {
     o.w("  gl_Position = vec4(clipPos.x, -clipPos.y, clipPos.w > 0.0 ? clamp(z_vk, 0.0, clipPos.w) : z_vk, clipPos.w);\n");
     o.w("  v_viewz = pos.z;\n");
 
-    o.w("  vec4 vclr0 = %s;\n", (f & VF_CLR0) ? "a_clr0" : "vec4(1.0)");
-    o.w("  vec4 vclr1 = %s;\n", (f & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
-    for (int c = 0; c < 2; c++) {
-        if ((uint32_t)c >= u.numChans) {
-            o.w("  v_clr%d = vclr%d;\n", c, c);
-            continue;
-        }
-        for (int alpha = 0; alpha < 2; alpha++) {
-            uint32_t ctrl = alpha ? u.alphaCtrl[c] : u.colorCtrl[c];
-            const char* sw = alpha ? "a" : "rgb";
-            char mat[64], amb[64];
-            snprintf(mat, sizeof(mat), (ctrl & 1) ? "vclr%d.%s" : "matColor[%d].%s", c, sw);
-            snprintf(amb, sizeof(amb), ((ctrl >> 6) & 1) ? "vclr%d.%s" : "ambColor[%d].%s", c, sw);
-            bool enable = (ctrl >> 1) & 1;
-            uint32_t mask = ((ctrl >> 2) & 15) | (((ctrl >> 11) & 15) << 4);
-            if (!enable) {
-                o.w("  v_clr%d.%s = %s;\n", c, sw, mat);
-                continue;
-            }
-            uint32_t diffuse = (ctrl >> 7) & 3;
-            bool atten = (ctrl >> 9) & 1;
-            bool spot = (ctrl >> 10) & 1;
-            o.w("  {\n    %s lit = %s;\n", alpha ? "float" : "vec3", amb);
-            for (int l = 0; l < 8; l++) {
-                if (!(mask & (1u << l))) continue;
-                o.w("    {\n");
-                o.w("      uint b = lbase + %uu;\n", (unsigned)(l * 5));
-                o.w("      vec3 lpos = fetch_st(b + 3u).xyz;\n");
-                o.w("      vec3 ldir = fetch_st(b + 4u).xyz;\n");
-                o.w("      vec3 d = lpos - pos;\n");
-                o.w("      float d2 = dot(d, d);\n");
-                o.w("      float dist = sqrt(max(d2, 1e-6));\n");
-                o.w("      vec3 lvec = d / dist;\n");
-                o.w("      float cosAttn = (dist > 0.0 && %s) ? max(0.0, dot(ldir, -lvec)) : 1.0;\n", spot ? "true" : "false");
-                o.w("      vec4 k = fetch_st(b + 1u);\n");
-                o.w("      float a = (dist > 0.0 && %s) ? max(0.0, dot(vec3(1.0, cosAttn, cosAttn * cosAttn), k.xyz) / dot(vec3(1.0, dist, d2), fetch_st(b + 2u).xyz)) : 1.0;\n",
-                    atten ? "true" : "false");
-                if (diffuse == 0) {
-                    o.w("      float illum = 1.0;\n");
-                } else if (diffuse == 1) {
-                    o.w("      float illum = max(0.0, dot(nrm, lvec));\n");
-                } else {
-                    o.w("      float illum = clamp((dot(nrm, lvec) >= 0.0 ? dot(nrm, lvec) : 0.0), 0.0, 1.0);\n");
-                }
-                o.w("      lit += %s * (fetch_st(b).%s * (illum * a));\n", mat, sw);
-                o.w("    }\n");
-            }
-            o.w("    v_clr%d.%s = clamp(lit, %s(0.0), %s(1.0));\n  }\n", c, sw, alpha ? "float" : "vec3", alpha ? "float" : "vec3");
-        }
-    }
-
-    for (uint32_t i = 0; i < u.numTexGens && i < 8; i++) {
-        uint32_t info = u.texMtxInfo[i];
-        uint32_t src = (info >> 7) & 31;
-        uint32_t form = (info >> 2) & 3;
-        const char* in = "vec4(0.0, 0.0, 1.0, 1.0)";
-        char uvBuf[64];
-        if (src == 0) in = "vec4(pos, 1.0)";
-        else if (src == 1) in = "vec4(nrm, 1.0)";
-        else if (src == 2) in = (f & VF_CLR0) ? "vec4(a_clr0.rgb, 1.0)" : "vec4(1.0)";
-        else if (src == 3) in = "vec4(bin, 1.0)";
-        else if (src == 4) in = "vec4(tan, 1.0)";
-        else if (src >= 5 && src <= 12) {
-            int texIdx = src - 5;
-            if (f & (VF_TEX0 << texIdx)) {
-                snprintf(uvBuf, sizeof(uvBuf), "vec4(a_tex%d, 1.0, 1.0)", texIdx);
-                in = uvBuf;
-            }
-        }
-        o.w("  {\n    vec4 tsrc = %s;\n", in);
-        if (f & VF_TEXMTX) {
-            if (i < 4) {
-                o.w("    uint m = (a_texmtx.x >> %uu) & 63u;\n", i * 8u);
-            } else {
-                o.w("    uint m = (a_texmtx.y >> %uu) & 63u;\n", (i - 4u) * 8u);
-            }
-        } else {
-            o.w("    uint m = (fetch_recs(rb + %uu) >> %uu) & 63u;\n", i < 4 ? (unsigned)kRecMtxIdxA : (unsigned)kRecMtxIdxB,
-                i < 4 ? (unsigned)((i + 1) * 6) : (unsigned)((i - 4) * 6));
-        }
-        o.w("    m = (m != 0u) ? m : 60u;\n");
-        o.w("    uint r = slotRow(rb, %uu, m);\n", (unsigned)kRecPosSlots);
-        if (form == 0) {
-            o.w("    vec2 t = vec2(dot(fetch_rows(r), tsrc), dot(fetch_rows(r + 1u), tsrc));\n");
-            o.w("    v_tex%u = vec3(t, 1.0);\n", i);
-        } else {
-            o.w("    v_tex%u = mulRows(r, tsrc);\n", i);
-        }
-        if (u.dualTex) {
-            o.w("    uint pr = fetch_recs(rb + %uu);\n", (unsigned)(kRecPost + i));
-            o.w("    v_tex%u = mulRows(pr, vec4(v_tex%u, 1.0));\n", i, i);
-        }
-        if ((u.screenTexGens >> i) & 1) {
-            o.w("    if (vrDraw) {\n");
-            o.w("      v_tex%u = vec3((clipPos.xy / clipPos.w) * 0.5 + 0.5, 1.0);\n", i);
-            o.w("    } else {\n");
-            o.w("      v_tex%u = vec3((c.xy / c.w) * 0.5 + 0.5, 1.0);\n", i);
-            o.w("    }\n");
-        }
-        o.w("  }\n");
-    }
+    vkGenerateLighting(o, u);
+    vkGenerateTexGens(o, u);
     o.w("}\n");
     return o.s;
 }

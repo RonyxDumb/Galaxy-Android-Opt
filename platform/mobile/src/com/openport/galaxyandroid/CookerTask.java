@@ -25,17 +25,11 @@ public final class CookerTask {
                              String selectedDisplayName, boolean includeMovies, CookerTaskListener listener) {
         new Thread(() -> {
             try {
-                File outputDir = new File(Environment.getExternalStorageDirectory(), "GalaxyData");
-                if (!outputDir.exists() && !outputDir.mkdirs()) {
-                    if (listener != null) listener.onLog("[Storage] Primary storage not directly writable; using app external storage.");
-                    File appExt = activity.getExternalFilesDir(null);
-                    if (appExt != null) {
-                        outputDir = new File(appExt, "GalaxyData");
-                        outputDir.mkdirs();
-                    } else {
-                        outputDir = new File(activity.getFilesDir(), "GalaxyData");
-                        outputDir.mkdirs();
-                    }
+                File appStorage = activity.getExternalFilesDir(null);
+                if (appStorage == null) appStorage = activity.getFilesDir();
+                File outputDir = new File(appStorage, "GalaxyData");
+                if (!outputDir.isDirectory() && !outputDir.mkdirs()) {
+                    throw new java.io.IOException("Cannot create installation directory");
                 }
                 if (listener != null) listener.onLog("[Storage] Target installation directory: " + outputDir.getAbsolutePath());
 

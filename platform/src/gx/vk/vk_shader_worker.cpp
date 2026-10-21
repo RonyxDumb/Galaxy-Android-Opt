@@ -1,53 +1,58 @@
 #include "gx/vk/vk_common.h"
+#include "gx/vk_shader_inventory.h"
 
 namespace gpu {
 
-PipelineKey pipelineKeyFor(const Item& it, const ShaderUid& uid);
-
 VkShaderModule VkRenderer::createShaderModule(const uint32_t* code, size_t sizeBytes) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = sizeBytes;
-    createInfo.pCode = code;
-
+    VkShaderModuleCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info.codeSize = sizeBytes;
+    info.pCode = code;
     VkShaderModule module = VK_NULL_HANDLE;
-    vkCreateShaderModule(mDevice, &createInfo, nullptr, &module);
+    vkCreateShaderModule(mDevice, &info, nullptr, &module);
     return module;
 }
 
-void VkRenderer::requestShader(const ShaderUid& uid, const Item& it) {
-    mShaderPendingItems[uid] = it;
+void VkRenderer::requestPipeline(const PipelineKey& key, const ShaderUid& uid) {
+    // Keep the key pending until the render thread has published the result,
+    // including the interval after the worker finishes. Every draw may ask.
+    if (!mPipelinePending.insert(key).second) return;
+    const bool knownUid = ShaderInventory::get().hasUid(uid);
+    if (knownUid) ShaderInventory::get().recordRuntimePipelineKeyMiss(uid, key);
+    else ShaderInventory::get().recordRuntimeShaderUidMiss(uid, key);
     {
         std::lock_guard<std::mutex> lock(mShaderMutex);
-        if (mShaderStop || mShaderQueued.count(uid)) return;
-        mShaderQueued.insert(uid);
-        mShaderQueue.push_back(uid);
+        mShaderQueue.push_back({key, uid, knownUid});
     }
     mShaderCv.notify_one();
 }
 
 void VkRenderer::startShaderWorker() {
     if (mShaderThread.joinable()) return;
-    mShaderStop = false;
+    {
+        std::lock_guard<std::mutex> lock(mShaderMutex);
+        mShaderStop = false;
+    }
     mShaderThread = std::thread([this]() {
         for (;;) {
-            ShaderUid uid;
+            PipelineRequest request;
             {
                 std::unique_lock<std::mutex> lock(mShaderMutex);
                 mShaderCv.wait(lock, [this]() { return mShaderStop || !mShaderQueue.empty(); });
-                if (mShaderQueue.empty()) return;
-                uid = mShaderQueue.front();
+                if (mShaderStop) return;
+                request = mShaderQueue.front();
                 mShaderQueue.pop_front();
             }
-
-            CompiledShader result;
-            result.uid = uid;
+            CompiledShader result{};
+            result.uid = request.uid;
+            result.key = request.key;
+            result.knownUid = request.knownUid;
             auto start = std::chrono::steady_clock::now();
-            result.ok = compileVulkanShader(uid, result.vsSpirv, result.fsSpirv);
+            std::vector<uint32_t> vs, fs;
+            result.ok = lookupVulkanShader(request.uid, vs, fs) || compileVulkanShader(request.uid, vs, fs);
+            if (result.ok) result.pipeline = buildPipeline(request.key, vs, fs);
             result.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-
             std::lock_guard<std::mutex> lock(mShaderMutex);
-            mShaderQueued.erase(uid);
             mShaderDone.push_back(std::move(result));
         }
     });
@@ -58,47 +63,42 @@ void VkRenderer::stopShaderWorker() {
         std::lock_guard<std::mutex> lock(mShaderMutex);
         mShaderStop = true;
         mShaderQueue.clear();
-        mShaderQueued.clear();
-        mShaderDone.clear();
     }
     mShaderCv.notify_all();
     if (mShaderThread.joinable()) mShaderThread.join();
-    mShaderPendingItems.clear();
+    // A build already running may finish after stop was requested. Dispose of
+    // its unpublished handle before render-pass/device destruction.
+    for (const auto& result : mShaderDone) {
+        if (result.pipeline) vkDestroyPipeline(mDevice, result.pipeline, nullptr);
+    }
+    mShaderDone.clear();
+    mPipelinePending.clear();
+    mPipelineFailed.clear();
     mShaderFailed.clear();
+    mPipelinesLoading = false;
 }
 
 void VkRenderer::drainCompiledShaders() {
-    CompiledShader shader;
-    auto drainStart = std::chrono::steady_clock::now();
-    int createdCount = 0;
-    for (;;) {
-        {
-            std::lock_guard<std::mutex> lock(mShaderMutex);
-            if (mShaderDone.empty()) return;
-            shader = std::move(mShaderDone.front());
-            mShaderDone.erase(mShaderDone.begin());
-        }
-
-        auto pending = mShaderPendingItems.find(shader.uid);
-        if (!shader.ok) {
-            mShaderFailed.insert(shader.uid);
-            LOGE("VkRenderer: shader program for draw %u could not be compiled; its draws stay hidden",
-                 pending != mShaderPendingItems.end() ? pending->second.uid : 0u);
-            if (pending != mShaderPendingItems.end()) mShaderPendingItems.erase(pending);
+    std::vector<CompiledShader> done;
+    {
+        std::lock_guard<std::mutex> lock(mShaderMutex);
+        done.swap(mShaderDone);
+    }
+    for (const auto& result : done) {
+        mPipelinePending.erase(result.key);
+        if (!result.pipeline) {
+            mPipelineFailed.insert(result.key);
+            if (!result.ok) mShaderFailed.insert(result.uid);
+            LOGE("VkRenderer: exact pipeline failed (shader %016llx)",
+                 (unsigned long long)ShaderUidHash()(result.uid));
             continue;
         }
-
+        auto inserted = mPipelines.emplace(result.key, result.pipeline);
+        if (!inserted.second) vkDestroyPipeline(mDevice, result.pipeline, nullptr);
         mShaderCompiles++;
-        if (pending == mShaderPendingItems.end()) continue;
-        const Item it = pending->second;
-        mShaderPendingItems.erase(pending);
-        LOGI("VkRenderer: compiled program for draw %u off the render thread in %.0f ms", it.uid, shader.ms);
-        createPipeline(pipelineKeyFor(it, shader.uid), shader.vsSpirv, shader.fsSpirv);
-        createdCount++;
-        auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - drainStart).count();
-        if (createdCount >= 4 || elapsed >= 5.0) {
-            return;
-        }
+        mRuntimePipelineCreates++;
+        if (result.knownUid) mRuntimeCreatesKnownUid++;
+        LOGI("VkRenderer: exact pipeline ready off-thread in %.1f ms", result.ms);
     }
 }
 

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -175,6 +176,7 @@ bool openStream(u32 rate) {
     AAudioStream_setBufferSizeInFrames(sStream, desired);
     sRingRead.store(sRingWrite.load());
     sResampler = AudioResampler();
+    sPlaying = false;
     r = AAudioStream_requestStart(sStream);
     if (r != AAUDIO_OK) {
         port_log("audio: AAudio requestStart failed: %s", AAudio_convertResultToText(r));
@@ -218,6 +220,7 @@ extern "C" void port_audio_submit(const s16* rightLeft, u32 frames, u32 rate) {
 
     if (sStream && sDisconnected.exchange(false)) {
         port_log("audio: output device disconnected or error, reopening");
+        AAudioStream_requestStop(sStream);
         AAudioStream_close(sStream);
         sStream = nullptr;
     }
@@ -262,7 +265,11 @@ extern "C" int port_audio_underruns(void) { return sUnderruns.load(); }
 // timer).
 extern "C" int64_t port_audio_queued_ns(void) {
     std::lock_guard<std::mutex> lock(sLock);
-    if (!sStream || sDeviceRate <= 0) return sOpenFailed ? -1 : 0;
+    // A disconnected device no longer drains this ring. Reporting its old
+    // backlog makes aiClock wait forever above kTarget, so port_audio_submit
+    // never gets the chance to reopen it. Run the timer fallback until the
+    // producer has replaced the stream on its own thread.
+    if (sDisconnected.load() || !sStream || sDeviceRate <= 0) return -1;
     u32 queued = sRingWrite.load(std::memory_order_relaxed) - sRingRead.load(std::memory_order_acquire);
     return (int64_t)queued * 1000000000ll / sDeviceRate;
 }
@@ -270,13 +277,13 @@ extern "C" int64_t port_audio_queued_ns(void) {
 extern "C" void port_audio_pause(void) {
     std::lock_guard<std::mutex> lock(sLock);
     if (sStream) {
-        AAudioStream_requestPause(sStream);
+        if (AAudioStream_requestPause(sStream) != AAUDIO_OK) sDisconnected = true;
     }
 }
 
 extern "C" void port_audio_resume(void) {
     std::lock_guard<std::mutex> lock(sLock);
     if (sStream) {
-        AAudioStream_requestStart(sStream);
+        if (AAudioStream_requestStart(sStream) != AAUDIO_OK) sDisconnected = true;
     }
 }

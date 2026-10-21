@@ -28,6 +28,7 @@ void TouchInputHandler::reset() {
     mStarStickKnobX = mStarStickBaseX = mStarStickKnobY = mStarStickBaseY = 0.0f;
     mTouchStickX = mTouchStickY = mStarStickX = mStarStickY = 0.0f;
     mPointerActiveFrames = 0;
+    mTapPendingFrames = mTapDelayFrames = 0;
     mBtnAPressed = mBtnBPressed = mBtnZPressed = mBtnSpinPressed = mBtnPlusPressed = false;
     mBtnDpadLeft = mBtnDpadRight = mBtnDpadUp = mBtnDpadDown = false;
     mFingerDownOnA = mFingerDownOnB = mFingerDownOnZ = mFingerDownOnSpin = mFingerDownOnPlus = false;
@@ -78,7 +79,7 @@ void TouchInputHandler::update(PortPadState& pad, int& spinFrames, bool fullTouc
 uint32_t TouchInputHandler::getTouchButtons() const {
     uint32_t b = 0;
     if (mBtnAPressed) b |= 0x0800;
-    if (mBtnBPressed) b |= 0x0C00;
+    if (mBtnBPressed) b |= 0x0400;
     if (mBtnZPressed) b |= 0x2000;
     if (mBtnPlusPressed) b |= 0x0010;
     if (mBtnDpadLeft) b |= 0x0001;
@@ -103,29 +104,8 @@ bool TouchInputHandler::handleTouch(const AInputEvent* event, PortPadState& pad,
     float w = (float)screenW;
     float h = (float)screenH;
 
-    // Check Settings Tab Dock (Top-Left)
-    float tabW = 56.0f * uiScale;
-    float tabH = 48.0f * uiScale;
-    float tabY = 22.0f * uiScale;
-    float qsX = tabW + 16.0f * uiScale;
-    float qsW = 58.0f * uiScale;
-
-    if (action == AMOTION_EVENT_ACTION_DOWN || action == AMOTION_EVENT_ACTION_POINTER_DOWN) {
-        float px = AMotionEvent_getX(event, pointerIndex);
-        float py = AMotionEvent_getY(event, pointerIndex);
-        if (px >= 0.0f && px <= tabW + 8.0f * uiScale && py >= tabY - 8.0f * uiScale && py <= tabY + tabH + 8.0f * uiScale) {
-            mBtnCfgPressed = true;
-            outOpenSettings = true;
-            return true;
-        }
-        if (px >= qsX && px <= qsX + qsW && py >= tabY - 4.0f * uiScale && py <= tabY + tabH + 4.0f * uiScale) {
-            outQuickSave = true;
-            return true;
-        }
-    }
-    if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
-        mBtnCfgPressed = false;
-    }
+    outOpenSettings = false;
+    outQuickSave = false;
 
     pad.connected = 1;
     uint32_t touchButtons = 0;
@@ -151,29 +131,24 @@ bool TouchInputHandler::handleTouch(const AInputEvent* event, PortPadState& pad,
     float stickBaseR = 95.0f * scale;
     float stickMaxR = 100.0f * scale;
 
-    if (action == AMOTION_EVENT_ACTION_DOWN) {
-        mTouchPointerId = AMotionEvent_getPointerId(event, 0);
-        mTouchStartX = AMotionEvent_getX(event, 0);
-        mTouchStartY = AMotionEvent_getY(event, 0);
-        mTouchStartTime = currentTimeMs();
-    }
-
-    if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
-        if (mTouchPointerId >= 0) {
-            int64_t dur = currentTimeMs() - mTouchStartTime;
-            float px = AMotionEvent_getX(event, pointerIndex);
-            float py = AMotionEvent_getY(event, pointerIndex);
-            float fdx = px - mTouchStartX, fdy = py - mTouchStartY;
-            if (dur < 350 && (fdx * fdx + fdy * fdy <= 45.0f * uiScale * 45.0f * uiScale)) {
-                mTapPendingFrames = 6;
-            }
-            mTouchPointerId = -1;
+    bool tap = false;
+    if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_POINTER_UP) {
+        int32_t lifted = AMotionEvent_getPointerId(event, pointerIndex);
+        float px = AMotionEvent_getX(event, pointerIndex), py = AMotionEvent_getY(event, pointerIndex);
+        for (const auto& point : mTouches) {
+            if (point.id != lifted || point.role != TouchRole::STAR_POINTER) continue;
+            float dx = px - point.startX, dy = py - point.startY;
+            tap = currentTimeMs() - point.startTime < 350 && dx * dx + dy * dy <= 2025.0f * uiScale * uiScale;
         }
+    }
+    if (action == AMOTION_EVENT_ACTION_UP || action == AMOTION_EVENT_ACTION_CANCEL) {
         reset();
         pad.stickX = pad.stickY = 0.0f;
         pad.buttons &= ~0x3C1F;
+        if (tap) { mTapPendingFrames = 6; mPointerActiveFrames = 6; }
         return true;
     }
+    if (tap) { mTapPendingFrames = 6; mPointerActiveFrames = 6; }
 
     if (action == AMOTION_EVENT_ACTION_POINTER_UP) {
         int32_t liftedPid = AMotionEvent_getPointerId(event, pointerIndex);

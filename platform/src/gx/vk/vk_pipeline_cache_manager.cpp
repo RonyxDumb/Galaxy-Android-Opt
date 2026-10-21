@@ -80,6 +80,10 @@ void VkRenderer::initPipelineCache() {
 }
 
 void VkRenderer::savePipelineCache() {
+    // A lifecycle callback must not wait behind a driver compilation. Shutdown
+    // stops the worker first, so its final snapshot can still acquire the lock.
+    std::unique_lock<std::mutex> cacheLock(mPipelineCompileMutex, std::try_to_lock);
+    if (!cacheLock.owns_lock()) return;
     if (mPipelineCache == VK_NULL_HANDLE || mDevice == VK_NULL_HANDLE) return;
 
     size_t dataSize = 0;

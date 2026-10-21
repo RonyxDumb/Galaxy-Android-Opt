@@ -1,8 +1,7 @@
 #include "FramePacer.h"
-#include <sched.h>
+#include <errno.h>
 #include <time.h>
 #include "port/port.h"
-#include "../system/SystemManager.h"
 
 namespace mobile_display {
 
@@ -24,44 +23,27 @@ void FramePacer::sync(android_app* app, int targetFps, float gameSpeed) {
         return;
     }
 
-    int64_t targetNs = mLastPresentNs + framePeriodNs;
+    const int64_t targetNs = mLastPresentNs + framePeriodNs;
     if (nowNs < targetNs) {
-        int64_t waitNs = targetNs - nowNs;
-        int64_t sleepRecordedNs = 0;
-        if (waitNs > 1500000ll) {
-            int64_t coarseSleepNs = waitNs - 500000ll;
-            struct timespec req;
-            req.tv_sec = coarseSleepNs / 1000000000ll;
-            req.tv_nsec = coarseSleepNs % 1000000000ll;
-            int64_t sleepStartNs = port_host_time_ns();
-            nanosleep(&req, nullptr);
-            sleepRecordedNs = port_host_time_ns() - sleepStartNs;
-        }
-
-        while (true) {
-            int64_t rem = targetNs - port_host_time_ns();
-            if (rem <= 0) break;
-            if (rem > 250000ll) {
-                struct timespec req;
-                req.tv_sec = 0;
-                req.tv_nsec = rem - 100000ll;
-                nanosleep(&req, nullptr);
-            } else if (rem > 50000ll) {
-                sched_yield();
-            } else {
-#if defined(__aarch64__) || defined(__arm__)
-                asm volatile("yield" ::: "memory");
-#endif
-            }
-        }
-
-        if (sleepRecordedNs > 0) {
-            port_perf_pace(sleepRecordedNs);
-        }
-        mLastPresentNs = port_host_time_ns();
+        // Sleep until an absolute CLOCK_MONOTONIC deadline. In particular,
+        // avoid the former sched_yield / CPU busy-spin loop: keeping an A34
+        // efficiency core active just to wait for a frame wastes power and
+        // raises sustained thermal pressure on Mali devices.
+        struct timespec deadline{};
+        deadline.tv_sec = (time_t)(targetNs / 1000000000ll);
+        deadline.tv_nsec = (long)(targetNs % 1000000000ll);
+        const int64_t waitStartNs = nowNs;
+        int status;
+        do {
+            status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, nullptr);
+        } while (status == EINTR);
+        const int64_t endNs = port_host_time_ns();
+        if (endNs > waitStartNs) port_perf_pace(endNs - waitStartNs);
+        // Preserve phase across normal wake-up jitter instead of advancing
+        // from an already-late wakeup every frame.
+        mLastPresentNs = (status == 0) ? targetNs : endNs;
     } else {
-        // Target deadline was already missed. Reset mLastPresentNs to nowNs immediately
-        // so future frames do not inherit negative phase debt.
+        // We missed this slot: do not accumulate a backlog of catch-up frames.
         mLastPresentNs = nowNs;
     }
 }

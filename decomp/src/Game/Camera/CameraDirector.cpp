@@ -239,6 +239,7 @@ void CameraDirector::calcPose() {
     mOnlyCamera->calcPose(man);
     mPoseParam1->copyFrom(*mOnlyCamera->mPoseParam);
 
+#if !defined(TARGET_MOBILE)
     // Pillar 2: True 360-Degree Analog Right-Stick Orbital Camera
     static f32 sOrbitYaw = 0.0f;
     static f32 sOrbitPitch = 0.0f;
@@ -302,6 +303,7 @@ void CameraDirector::calcPose() {
             }
         }
     }
+#endif
 }
 
 void CameraDirector::calcSubjective() {

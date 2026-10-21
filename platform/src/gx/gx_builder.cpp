@@ -22,6 +22,7 @@ void Builder::build(std::shared_ptr<const Frame> frame, Prepared& out) {
     const Frame& f = *frame;
     items.clear();
     uids.clear();
+    uidStateBases.clear();
     uidIndex.clear();
     rows.clear();
     recs.clear();

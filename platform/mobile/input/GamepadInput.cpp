@@ -4,12 +4,13 @@
 #include <algorithm>
 #include <math.h>
 
-#include "../ui/UIOverlay.h"
+#include "mobile/ui/UIOverlay.h"
 #include "port/port.h"
 
 namespace mobile_input {
 
 bool GamepadInput::handleMotionEvent(AInputEvent* event, PortPadState& pad, int& spinFrames, bool touchscreenDown) {
+    (void)touchscreenDown;
     int32_t source = AInputEvent_getSource(event);
     bool isJoystick = (source & AINPUT_SOURCE_CLASS_JOYSTICK) != 0 ||
                       ((source & AINPUT_SOURCE_GAMEPAD) == AINPUT_SOURCE_GAMEPAD) ||
@@ -76,24 +77,41 @@ bool GamepadInput::handleMotionEvent(AInputEvent* event, PortPadState& pad, int&
         rStickX = (rightX / mag) * scale;
         rStickY = (-rightY / mag) * scale;
     }
-    float starSens = mobile_ui::UIOverlay::get().settings().starStickSensitivity;
-    if (mobile_ui::UIOverlay::get().settings().rightStickMode == 0) {
-        pad.rightStickX = std::max(-1.0f, std::min(1.0f, -rStickX * starSens));
-        pad.rightStickY = std::max(-1.0f, std::min(1.0f, rStickY * starSens));
-    } else {
-        pad.rightStickX = 0.0f;
-        pad.rightStickY = 0.0f;
-        if ((fabsf(rStickX) > 0.01f || fabsf(rStickY) > 0.01f) && !touchscreenDown) {
-            float speed = 0.035f * starSens;
-            pad.pointerX = std::max(-1.0f, std::min(1.0f, pad.pointerX + rStickX * speed));
-            pad.pointerY = std::max(-1.0f, std::min(1.0f, pad.pointerY - rStickY * speed));
-            pad.pointerValid = 1;
-            mobile_ui::UIOverlay::get().setPointerPos(pad.pointerX, pad.pointerY);
-        }
-    }
+    mRightStickX = rStickX;
+    mRightStickY = rStickY;
 
     pad.connected = 1;
     return true;
+}
+
+void GamepadInput::update(PortPadState& pad, bool touchscreenDown, int64_t nowNs) {
+    float dt = 0.0f;
+    if (mLastUpdateNs != 0 && nowNs > mLastUpdateNs) {
+        dt = std::min(0.05f, (float)(nowNs - mLastUpdateNs) / 1e9f);
+    }
+    mLastUpdateNs = nowNs;
+    if (!mGamepadDetected || touchscreenDown) return;
+
+    auto& ui = mobile_ui::UIOverlay::get();
+    float sensitivity = ui.settings().starStickSensitivity;
+    if (ui.settings().rightStickMode == 0) {
+        // The touch layer damps transient camera flicks each update. Restore
+        // the held physical axis even when Android sends no further events.
+        pad.rightStickX = std::clamp(-mRightStickX * sensitivity, -1.0f, 1.0f);
+        pad.rightStickY = std::clamp(mRightStickY * sensitivity, -1.0f, 1.0f);
+    } else {
+        pad.rightStickX = pad.rightStickY = 0.0f;
+        if (fabsf(mRightStickX) > 0.01f || fabsf(mRightStickY) > 0.01f) {
+            // Match the former 0.035 units at 60 Hz, using elapsed time
+            // rather than Bluetooth report rate or render-loop iteration rate.
+            float distance = 2.1f * sensitivity * dt;
+            pad.pointerX = std::clamp(ui.getPointerX() + mRightStickX * distance, -1.0f, 1.0f);
+            pad.pointerY = std::clamp(ui.getPointerY() - mRightStickY * distance, -1.0f, 1.0f);
+            pad.pointerValid = 1;
+            pad.pointerDist = 2.0f;
+            ui.setPointerPos(pad.pointerX, pad.pointerY);
+        }
+    }
 }
 
 bool GamepadInput::handleKeyEvent(AInputEvent* event, PortPadState& pad, int& spinFrames) {
@@ -240,6 +258,9 @@ bool GamepadInput::handleKeyEvent(AInputEvent* event, PortPadState& pad, int& sp
 void GamepadInput::reset() {
     mPhysicalButtons = 0;
     mPhysicalAxisButtons = 0;
+    mPhysicalStickX = mPhysicalStickY = 0.0f;
+    mRightStickX = mRightStickY = 0.0f;
+    mLastUpdateNs = 0;
 }
 
 }  // namespace mobile_input

@@ -34,12 +34,13 @@ public final class GameDataLocator {
 
     public static File findGameDataFolder(Context context) {
         List<File> candidates = new ArrayList<>();
-        candidates.add(new File("/sdcard/GalaxyData"));
-        candidates.add(new File(Environment.getExternalStorageDirectory(), "GalaxyData"));
         if (context != null) {
-            candidates.add(new File(context.getExternalFilesDir(null), "GalaxyData"));
+            File external = context.getExternalFilesDir(null);
+            if (external != null) candidates.add(new File(external, "GalaxyData"));
             candidates.add(new File(context.getFilesDir(), "GalaxyData"));
         }
+        candidates.add(new File("/sdcard/GalaxyData"));
+        candidates.add(new File(Environment.getExternalStorageDirectory(), "GalaxyData"));
         File storageDir = new File("/storage");
         if (storageDir.exists() && storageDir.isDirectory()) {
             File[] mounts = storageDir.listFiles();

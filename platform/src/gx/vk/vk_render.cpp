@@ -1,6 +1,13 @@
 #include "gx/vk/vk_common.h"
+#include "gx/vk/vk_render_submit.h"
 
 namespace gpu {
+
+void VkRenderer::nativeTargetSize(int& width, int& height) const {
+    width = mPrepared ? int(mPrepared->nativeW) : 640;
+    height = mPrepared ? int(mPrepared->nativeH) : 456;
+}
+
 
 bool VkRenderer::update() {
     std::lock_guard<std::recursive_mutex> lock(mRenderMutex);
@@ -43,6 +50,9 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
     if (items.empty()) {
         return false;
     }
+    // Never submit a partially shaded scene. Prepare every exact pipeline
+    // before recording draws, while the last complete target remains intact.
+    if (!prepareFramePipelines(p, hudMode)) return false;
 
     if (!waitInFlightSubmissions("render")) {
         return false;
@@ -56,8 +66,6 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
         if (item.memory != VK_NULL_HANDLE) vkFreeMemory(mDevice, item.memory, nullptr);
     }
     mStagingBuffersToFree.clear();
-
-    drainCompiledShaders();
 
     mFrameIndex = (mFrameIndex + 1) % 2;
     FrameResource& fr = mFrameRes[mFrameIndex];
@@ -153,24 +161,12 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
         return false;
     }
 
-    if (mRenderSignaledSem) {
-        vkQueueWaitIdle(mQueue);
-        mRenderSignaledSem = false;
-    }
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &mCommandBuffer;
-    VkSemaphore signalSems[] = {mRenderToPresentSem};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSems;
-
-    vkResetFences(mDevice, 1, &mRenderFence);
-    VkResult subRes = vkQueueSubmit(mQueue, 1, &submitInfo, mRenderFence);
+    VkResult subRes = submitRenderCommands(mDevice, mQueue, mCommandBuffer,
+                                          mRenderFence, mRenderToPresentSem,
+                                          mRenderSignaledSem);
     if (subRes != VK_SUCCESS) {
         mRenderSignaledSem = false;
-        markFatal("render", "vkQueueSubmit", (int)subRes);
+        markFatal("render", "submitRenderCommands", (int)subRes);
         target.hasValidContent = false;
         return false;
     }

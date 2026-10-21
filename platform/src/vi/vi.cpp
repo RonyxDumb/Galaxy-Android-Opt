@@ -8,6 +8,7 @@
 
 #include "port/heap_routing.h"
 #include "port/port.h"
+#include "port/pause_state.h"
 #include "revolution/os/OSInterrupt.h"
 #include "revolution/os/OSThread.h"
 #include "revolution/vi/vi3in1types.h"
@@ -25,7 +26,7 @@ static bool sBlack = true;
 static bool sPendingBlack = true;
 static const GXRenderModeObj* sRenderMode;
 static bool sInited;
-static std::atomic<int> sPaused{0};
+static PortPauseState sPauseState;
 static std::atomic<int64_t> sExternalAt{0};  // host time of the last display-timed retrace
 static std::atomic<int64_t> sRaisedAt{0};    // host time of the last retrace raised
 static std::atomic<int> sDisplayRefreshRate{60};
@@ -89,7 +90,7 @@ static void viClock() {
         if (now > next + period * 2) {
             next = now + period;  // resync after a stall instead of bursting
         }
-        if (sPaused.load()) {
+        if (sPauseState.isPaused()) {
             continue;  // no retrace: the game stays in VIWaitForRetrace
         }
         // If the display/presenter recently raised a retrace within this cadence window,
@@ -107,7 +108,7 @@ extern "C" {
 
 void port_vi_retrace(void) {
     sExternalAt.store(port_host_time_ns());
-    if (!sPaused.load()) {
+    if (!sPauseState.isPaused()) {
         raiseRetrace();
     }
 }
@@ -123,12 +124,13 @@ int port_get_display_refresh_rate(void) {
 }
 
 void port_set_paused(int paused) {
-    if (sPaused.exchange(paused ? 1 : 0) != (paused ? 1 : 0)) {
+    if (sPauseState.setLifecyclePaused(paused != 0)) {
         port_log("game %s", paused ? "paused" : "resumed");
     }
 }
 
-int port_is_paused(void) { return sPaused.load(); }
+void port_set_render_loading(int loading) { sPauseState.setRenderLoading(loading != 0); }
+int port_is_paused(void) { return sPauseState.isPaused(); }
 
 void port_set_game_speed(float speed) {
     if (speed < 0.25f) speed = 0.25f;

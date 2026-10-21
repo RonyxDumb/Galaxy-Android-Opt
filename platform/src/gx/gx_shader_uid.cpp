@@ -38,8 +38,8 @@ ShaderUid makeShaderUid(const uint32_t* bp, const uint32_t* xf, uint32_t vtxFlag
             u.indCmd[s] = bp[0x10 + s] & 0x1FFFFF;
         }
         u.iref = bp[0x27] & 0xFFFFFF;
-        u.indScale[0] = bp[0x25] & 0xFF;
-        u.indScale[1] = bp[0x26] & 0xFF;
+        u.indScale[0] = bp[0x25] & 0xFFFF;
+        u.indScale[1] = bp[0x26] & 0xFFFF;
     }
     // The EFB pixel format (BP 0x43) deliberately stays out of the UID: it is
     // draw-target state, no shader or pipeline field is derived from it, and

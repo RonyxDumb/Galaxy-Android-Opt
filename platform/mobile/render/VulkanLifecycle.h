@@ -18,7 +18,7 @@ public:
                                 bool& vkReady);
 
     // Prepares on-disk caches (SPIR-V shader binary and Vulkan pipeline cache)
-    static void initCaches(const std::string& internalPath);
+    static void initCaches(const std::string& internalPath, const std::string& dataRoot);
 };
 
 }  // namespace mobile_render

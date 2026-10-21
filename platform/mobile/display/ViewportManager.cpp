@@ -44,32 +44,11 @@ void ViewportManager::update(int screenW, int screenH, bool fullscreen) {
 void ViewportManager::computeTargetSize(int screenW, int screenH, int scaleChoice,
                                        bool batterySaver, bool fullscreen,
                                        int& outW, int& outH) {
-    if (batterySaver) {
-        scaleChoice = std::min(scaleChoice, 1);
-    }
+    (void)screenW; (void)screenH; (void)scaleChoice;
+    (void)batterySaver; (void)fullscreen;
+    outW = 640;
+    outH = 456;
 
-    int dispH = std::min(screenW, screenH);
-    int dispW = std::max(screenW, screenH);
-    int targetH = 1080;
-
-    if (scaleChoice == 0) targetH = 480;       // Native 480p (Wii accurate / max FPS)
-    else if (scaleChoice == 1) targetH = 720;  // 720p HD (budget chips)
-    else if (scaleChoice == 2) targetH = 1080; // 1080p FHD
-    else if (scaleChoice == 3) targetH = 1440; // 1440p 2K Ultra
-    else if (dispH > 1080) {
-        targetH = std::min(dispH, 1440);
-    }
-
-    int targetW;
-    if (fullscreen) {
-        float nativeAspect = (float)dispW / (float)dispH;
-        targetW = (int)lroundf(targetH * nativeAspect);
-    } else {
-        targetW = (targetH * 16) / 9;
-    }
-
-    outW = targetW;
-    outH = targetH;
 }
 
 void ViewportManager::computePointerBounds(int screenW, int screenH, bool fullscreen,

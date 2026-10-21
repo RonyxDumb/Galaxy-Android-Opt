@@ -16,17 +16,19 @@ namespace gpu {
 
 namespace {
 constexpr size_t kMaxCachedKeys = 4096;
-constexpr size_t kSaveEveryNthNewKey = 32;
 }  // namespace
 
 void ShaderInventory::saveInventory() {
+    std::lock_guard<std::mutex> saveLock(mSaveMutex);
     std::vector<ManifestStagedEntry> staged;
     size_t discovered = 0;
+    size_t revision = 0;
     {
         std::lock_guard<std::mutex> lock(mMutex);
         if (mInventoryFilePath.empty()) return;
         if (mEntries.empty()) return;
-        if (mStats.runtimeDiscoveredEntries < mSavedRuntimeEntries + kSaveEveryNthNewKey) return;
+        if (mStats.runtimeDiscoveredEntries == mSavedRuntimeEntries) return;
+        revision = mStats.runtimeDiscoveredEntries;
         staged.reserve(mEntries.size());
         for (const auto& e : mEntries) {
             if (!e.isRuntimeDiscovered) continue;
@@ -38,7 +40,6 @@ void ShaderInventory::saveInventory() {
             staged.push_back(std::move(s));
             discovered++;
         }
-        mSavedRuntimeEntries = mStats.runtimeDiscoveredEntries;
     }
     if (staged.empty()) return;
 
@@ -46,6 +47,10 @@ void ShaderInventory::saveInventory() {
     if (!writeAssetManifest(path, staged, kBuildVersion)) {
         LOGW("vk_shader_inventory: could not cache %zu runtime keys to %s", staged.size(), path.c_str());
         return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mSavedRuntimeEntries = revision;
     }
     port_log("vk_shader_inventory: cached %zu runtime keys for next launch", staged.size());
 }
