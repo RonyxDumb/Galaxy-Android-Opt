@@ -18,7 +18,18 @@ void VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
     }
 
     uint32_t imageIndex = 0;
+    const int64_t acquireStartNs = port_host_time_ns();
     VkResult acquireRes = vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, mImageAvailableSem, VK_NULL_HANDLE, &imageIndex);
+    const int64_t acquireWaitNs = port_host_time_ns() - acquireStartNs;
+    port_perf_queue_wait(acquireWaitNs);
+    if (acquireWaitNs > 50000000LL) {
+        static int64_t lastAcquireWarningNs = 0;
+        const int64_t nowNs = port_host_time_ns();
+        if (nowNs - lastAcquireWarningNs > 1000000000LL) {
+            LOGW("Vulkan swapchain image acquire stall: %lld ms", (long long)(acquireWaitNs / 1000000LL));
+            lastAcquireWarningNs = nowNs;
+        }
+    }
     if (acquireRes == VK_ERROR_OUT_OF_DATE_KHR) {
         onWindowResized(mWindow);
         return;
