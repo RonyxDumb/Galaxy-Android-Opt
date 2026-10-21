@@ -6,6 +6,9 @@ import unittest
 def is_safe_child_path(root_dir: str, target_file: str) -> bool:
     """Python reference implementation of CookerEngine.verifyNoSymlinksBeneath invariant."""
     try:
+        # The extractor normalizes both separators before checking containment.
+        # POSIX realpath alone treats a backslash as an ordinary filename byte.
+        target_file = target_file.replace("\\", os.sep)
         root_canon = os.path.realpath(root_dir)
         target_canon = os.path.realpath(target_file)
         if not target_canon.startswith(root_canon + os.sep) and target_canon != root_canon:

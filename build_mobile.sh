@@ -15,12 +15,10 @@ CMAKE_BIN=$(find_cmake) || { echo "cmake not found: put it on PATH or set CMAKE"
 NINJA_BIN=$(find_ninja) || { echo "ninja not found: put it on PATH or set NINJA" >&2; exit 1; }
 
 BUILD=${BUILD:-build-mobile}
-if [ ! -f "$BUILD/build.ninja" ]; then
-  "$CMAKE_BIN" -S . -B "$BUILD" -G Ninja \
+"$CMAKE_BIN" -S . -B "$BUILD" -G Ninja \
     -DCMAKE_MAKE_PROGRAM="$(native_path "$NINJA_BIN")" \
     -DCMAKE_TOOLCHAIN_FILE="$(native_path "$NDK")/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-32 \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
     -DTARGET_MOBILE=ON \
     -DCMAKE_BUILD_TYPE=${CONFIG:-RelWithDebInfo}
-fi
 "$NINJA_BIN" -C "$BUILD" "$@"

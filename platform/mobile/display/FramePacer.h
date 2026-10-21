@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <android_native_app_glue.h>
+struct android_app;
 
 namespace mobile_display {
 
@@ -9,7 +9,7 @@ class FramePacer {
 public:
     FramePacer() = default;
 
-    // Synchronizes frame presentation with the target FPS, pacing via micro-sleeps
+    // Synchronizes presentation with an absolute monotonic sleep deadline.
     void sync(android_app* app, int targetFps, float gameSpeed);
 
     // Checks if a high refresh rate presentation slot is available for catch-up
@@ -23,7 +23,6 @@ public:
 
 private:
     int64_t mLastPresentNs = 0;
-    int mCurrentRefreshRate = 0;
 };
 
 }  // namespace mobile_display

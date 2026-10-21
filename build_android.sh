@@ -16,11 +16,9 @@ NINJA_BIN=$(find_ninja) || { echo "ninja not found: put it on PATH or set NINJA"
 [ -f third_party/openxr/prefab/modules/openxr_loader/libs/android.arm64-v8a/libopenxr_loader.so ] || tools/fetch_openxr.sh
 
 BUILD=${BUILD:-build-android}
-if [ ! -f $BUILD/build.ninja ]; then
-  "$CMAKE_BIN" -S . -B $BUILD -G Ninja \
+"$CMAKE_BIN" -S . -B $BUILD -G Ninja \
     -DCMAKE_MAKE_PROGRAM="$(native_path "$NINJA_BIN")" \
     -DCMAKE_TOOLCHAIN_FILE="$(native_path "$NDK")/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-32 \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
     -DCMAKE_BUILD_TYPE=${CONFIG:-RelWithDebInfo}
-fi
 "$NINJA_BIN" -C $BUILD "$@"

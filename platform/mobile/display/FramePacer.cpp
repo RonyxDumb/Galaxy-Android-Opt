@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <time.h>
 #include "port/port.h"
-#include "../system/SystemManager.h"
 
 namespace mobile_display {
 

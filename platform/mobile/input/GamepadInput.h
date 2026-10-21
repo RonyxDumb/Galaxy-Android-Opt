@@ -16,7 +16,10 @@ public:
     // Handles physical gamepad / keyboard button events
     bool handleKeyEvent(AInputEvent* event, PortPadState& pad, int& spinFrames);
 
-    // Resets held buttons on pause
+    // Applies held axes once per host update, independently of event frequency.
+    void update(PortPadState& pad, bool touchscreenDown, int64_t nowNs);
+
+    // Resets held buttons and axes on pause.
     void reset();
 
     // Returns whether a physical controller has been detected
@@ -35,6 +38,9 @@ private:
     uint32_t mPhysicalAxisButtons = 0;
     float mPhysicalStickX = 0.0f;
     float mPhysicalStickY = 0.0f;
+    float mRightStickX = 0.0f;
+    float mRightStickY = 0.0f;
+    int64_t mLastUpdateNs = 0;
 };
 
 }  // namespace mobile_input

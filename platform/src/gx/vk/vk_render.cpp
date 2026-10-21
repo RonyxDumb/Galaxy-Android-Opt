@@ -1,4 +1,5 @@
 #include "gx/vk/vk_common.h"
+#include "gx/vk/vk_render_submit.h"
 
 namespace gpu {
 
@@ -153,36 +154,12 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
         return false;
     }
 
-    if (mRenderSignaledSem) {
-        // Unconsumed binary semaphore from an earlier frame. Waiting is
-        // required before it can be signaled again, but expose this expensive
-        // fallback in performance telemetry rather than hiding a GPU stall.
-        const int64_t waitStartNs = port_host_time_ns();
-        VkResult waitRes = vkQueueWaitIdle(mQueue);
-        const int64_t waitNs = port_host_time_ns() - waitStartNs;
-        port_perf_queue_wait(waitNs);
-        if (waitNs > 50000000LL)
-            LOGW("Vulkan render queue idle stall: %lld ms", (long long)(waitNs / 1000000LL));
-        if (waitRes != VK_SUCCESS) {
-            markFatal("render", "vkQueueWaitIdle", (int)waitRes);
-            return false;
-        }
-        mRenderSignaledSem = false;
-    }
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &mCommandBuffer;
-    VkSemaphore signalSems[] = {mRenderToPresentSem};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSems;
-
-    vkResetFences(mDevice, 1, &mRenderFence);
-    VkResult subRes = vkQueueSubmit(mQueue, 1, &submitInfo, mRenderFence);
+    VkResult subRes = submitRenderCommands(mDevice, mQueue, mCommandBuffer,
+                                          mRenderFence, mRenderToPresentSem,
+                                          mRenderSignaledSem);
     if (subRes != VK_SUCCESS) {
         mRenderSignaledSem = false;
-        markFatal("render", "vkQueueSubmit", (int)subRes);
+        markFatal("render", "submitRenderCommands", (int)subRes);
         target.hasValidContent = false;
         return false;
     }

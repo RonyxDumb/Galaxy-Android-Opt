@@ -86,7 +86,8 @@ void MobileApp::handleAppCmd(int32_t cmd) {
         mGamepad.reset();
         mSpinFrames = 0;
         mTouchscreenDown = false;
-        mPad.buttons = mobile_ui::UIOverlay::get().getTouchButtons();
+        mPad = {};
+        mPad.connected = 1;
         port_input_set(0, &mPad);
         port_audio_pause();
         port_set_paused(1);
@@ -233,6 +234,7 @@ void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
         mobile_core::GameBooter::pollAndBoot(mGameBooted, mDataRoot, mSaveRoot, ext, mAndroid);
 
         mobile_ui::UIOverlay::get().update(mPad, mSpinFrames);
+        mGamepad.update(mPad, mTouchscreenDown, port_host_time_ns());
         if (mSpinFrames > 0) {
             float s = (mSpinFrames & 1) ? 2.5f : -2.5f;
             mPad.accX = s;

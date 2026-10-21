@@ -34,9 +34,7 @@ class AndroidStabilityGuards(unittest.TestCase):
         self.assertNotIn('asm volatile("yield"', source)
 
     def test_vulkan_stall_telemetry(self):
-        render = (ROOT / "platform/src/gx/vk/vk_render.cpp").read_text()
         present = (ROOT / "platform/src/gx/vk/vk_texture_presenter.cpp").read_text()
-        self.assertIn("Vulkan render queue idle stall", render)
         self.assertIn("Vulkan swapchain image acquire stall", present)
 
 

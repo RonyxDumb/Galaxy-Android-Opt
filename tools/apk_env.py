@@ -135,14 +135,16 @@ def prepare_signing_key(channel="tester"):
             if channel == "production":
                 raise SystemExit("REFUSING TO PACKAGE [production]: no signing keystore found.")
             if os.environ.get("GALAXY_ALLOW_NEW_KEY") == "1":
+                os.makedirs(os.path.dirname(DEV_KEYSTORE), exist_ok=True)
                 env = dict(os.environ)
                 env["_GALAXY_KT_PASS"] = storepass
                 env["_GALAXY_KT_KEYPASS"] = os.environ.get("GALAXY_KEY_PASS", storepass)
-                subprocess.run([KEYTOOL, "-genkeypair", "-keystore", DEV_KEYSTORE,
-                                "-storepass:env", "_GALAXY_KT_PASS", "-keypass:env", "_GALAXY_KT_KEYPASS",
-                                "-alias", KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
-                                "-validity", "10000", "-dname", "CN=GalaxyAndroid Dev,O=Local,C=US"],
-                               check=True, env=env)
+                if not os.path.exists(DEV_KEYSTORE):
+                    subprocess.run([KEYTOOL, "-genkeypair", "-keystore", DEV_KEYSTORE,
+                                    "-storepass:env", "_GALAXY_KT_PASS", "-keypass:env", "_GALAXY_KT_KEYPASS",
+                                    "-alias", KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
+                                    "-validity", "10000", "-dname", "CN=GalaxyAndroid Dev,O=Local,C=US"],
+                                   check=True, env=env)
                 KEYSTORE = DEV_KEYSTORE
                 return KEYSTORE
             raise SystemExit("REFUSING TO PACKAGE: no signing key found.")

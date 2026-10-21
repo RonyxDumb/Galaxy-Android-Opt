@@ -1,0 +1,48 @@
+name: Android source validation
+
+on:
+  pull_request:
+  push:
+    branches: [fix/a34-stability-pacing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
+        id: ndk
+        with:
+          ndk-version: r25c
+          add-to-path: true
+      - name: Install build tools
+        run: python3 -m pip install cmake==3.31.6 ninja==1.11.1.4
+      - name: Host regression tests and source checks
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          python3 -m unittest discover -s tools/tests -p 'test_*.py'
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 tools/check_include_case.py
+          python3 tools/check_loc.py
+      - name: Build shader compiler
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          "$ANDROID_NDK_HOME/ndk-build" -C "$ANDROID_NDK_HOME/sources/third_party/shaderc" \
+            NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk APP_ABI=arm64-v8a \
+            APP_STL=c++_static APP_PLATFORM=android-28 libshaderc_combined -j2
+      - name: Compile and link Android ARM64
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CONFIG: Release
+        run: bash build_mobile.sh -j2 game main reserve installer
