@@ -22,7 +22,7 @@ class NativeProbe(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def build(self, name, sources, ndk=False, preinclude=None):
+    def build(self, name, sources, ndk=False, preinclude=None, extra_flags=()):
         cmd = [self.compiler, "-std=c++20", "-Wall", "-Wextra", "-Werror",
                "-I", str(HERE / "fakes"), "-I", str(ROOT / "platform"),
                "-I", str(ROOT / "platform/include"), "-I", str(ROOT / "platform/src"),
@@ -35,9 +35,10 @@ class NativeProbe(unittest.TestCase):
             if not headers:
                 self.skipTest("set ANDROID_NDK_HOME for the Android/Vulkan API headers")
             # System libc/C++ headers take precedence over Android's libc.
-            cmd += ["-D__INTRODUCED_IN(x)=", "-D__DEPRECATED_IN(x)=", "-idirafter", str(headers[0])]
+            cmd += ["-D__INTRODUCED_IN(x)=", "-D__DEPRECATED_IN(x)=", "-D_Nullable=", "-D_Nonnull=",
+                    "-idirafter", str(headers[0])]
         probe = Path(self.tmp.name) / name
-        cmd += [str(HERE / (name + ".cpp"))] + [str(ROOT / p) for p in sources] + ["-o", str(probe)]
+        cmd += list(extra_flags) + [str(HERE / (name + ".cpp"))] + [str(ROOT / p) for p in sources] + ["-o", str(probe)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return probe

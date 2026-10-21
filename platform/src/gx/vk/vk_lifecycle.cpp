@@ -1,4 +1,5 @@
 #include "gx/vk/vk_common.h"
+#include "gx/vk_shader_inventory.h"
 
 namespace gpu {
 
@@ -102,10 +103,13 @@ VkRenderer& vkRenderer() {
 void VkRenderer::shutdown() {
     std::lock_guard<std::recursive_mutex> lock(mRenderMutex);
     mInitialized = false;
+    port_set_render_loading(0);
+    mDrawPipelines.clear();
 
     stopShaderWorker();
 
     if (mDevice != VK_NULL_HANDLE) {
+        ShaderInventory::get().saveInventory();
         vkDeviceWaitIdle(mDevice);
 
         if (mRenderFence != VK_NULL_HANDLE) {

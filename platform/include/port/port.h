@@ -121,6 +121,8 @@ void port_host_sleep_ns(int64_t ns);
 // thread waits in VIWaitForRetrace and no new audio is mixed.  Used while the
 // headset session does not have input focus (system menu, headset removed).
 void port_set_paused(int paused);
+// Temporarily hold simulation while the renderer prepares exact materials.
+void port_set_render_loading(int loading);
 int port_is_paused(void);
 
 // A video retrace timed by the headset's display (vi.cpp).  While these keep

@@ -121,6 +121,16 @@ class ShaderGeneratorTests(unittest.TestCase):
         self.assertIn('float a = float(outi.a);', fs)
         self.assertIn('(a >= alphaRef.x)', fs)
 
+    def test_tev_intermediate_inputs_and_final_rgb_wrap(self):
+        """Signed 11-bit registers feed A/B/C through their low eight bits."""
+        fs = self.fragment_shader()
+        for value in ('a', 'b', 'c'):
+            line = next(s for s in fs.splitlines() if 'tevin_' + value + ' =' in s)
+            self.assertIn('& ivec4(255)', line)
+            self.assertNotIn('clamp(', line)
+        self.assertIn('ivec3(uvec3(', fs)
+        self.assertIn('& uvec3(255u)', fs)
+
 
 if __name__ == '__main__':
     unittest.main()

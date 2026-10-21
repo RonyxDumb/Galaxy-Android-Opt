@@ -16,6 +16,7 @@
 #include "../system/SystemManager.h"
 #include "../ui/UIOverlay.h"
 #include "port/port.h"
+#include "gx/vk_shader_inventory.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "GalaxyCore", __VA_ARGS__)
 #ifndef LOGW
@@ -76,11 +77,14 @@ void MobileApp::handleAppCmd(int32_t cmd) {
         break;
     case APP_CMD_RESUME:
         LOGI("APP_CMD_RESUME");
+        mAppPaused = false;
         port_audio_resume();
         port_set_paused(0);
         break;
     case APP_CMD_PAUSE:
         LOGI("APP_CMD_PAUSE");
+        mAppPaused = true;
+        gpu::ShaderInventory::get().saveInventory();
         if (mVkReady) gpu::VkRenderer::get().savePipelineCache();
         mobile_ui::UIOverlay::get().resetInput();
         mGamepad.reset();
@@ -226,7 +230,7 @@ void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
             timeout = 0;
         }
 
-        if (!mWindowReady || port_is_paused()) {
+        if (!mWindowReady || mAppPaused) {
             usleep(25000);
             continue;
         }

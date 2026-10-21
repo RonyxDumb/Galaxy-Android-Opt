@@ -77,3 +77,52 @@ model-specific crashes remain open investigations.
 References: [upstream reports](https://github.com/OpenPort-Labs/Galaxy-Android/issues),
 [Vulkan semaphore rules](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-semaphores),
 [AAudio disconnect handling](https://developer.android.com/ndk/guides/audio/aaudio/aaudio#disconnected_audio_stream).
+
+
+## Graphics preparation follow-up — 0.0.4-a34.2
+
+The user's screenshots show missing/dark geometry and an abnormal bright
+horizon band. They establish visual defects, not the source of frame-time
+stalls. The following source defects were reproduced or checked separately:
+
+- Runtime shader misses used substitute material pipelines. Rendering now
+  waits until every exact pipeline in the submitted frame is ready; it does
+  not draw a partially shaded scene. A worker compiles both SPIR-V and the
+  driver pipeline, then the render thread publishes completed handles.
+- Requests are deduplicated by the full pipeline key until publication,
+  including distinct blend/depth variants sharing one shader UID. Unpublished
+  handles are disposed before shutdown or incompatible render-pass changes.
+- Graphics preparation has its own pause owner. Completing it cannot resume
+  an Android activity that is still paused. The previous complete frame (or
+  an initial cleared view) stays visible with a preparation message.
+- Inventory discoveries count unique keys and do not write files during a
+  draw. Dirty entries, including fewer than 32, are flushed at pause/shutdown.
+  Shader-source hashes are memoized by full UID. Draw recording reuses the
+  handles obtained by the frame preflight instead of doing another lookup.
+- GX TEV A/B/C and final RGB now use 8-bit wrap semantics rather than
+  saturation. This matches the reference operations in
+  [Dolphin PixelShaderGen](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/VideoCommon/PixelShaderGen.cpp).
+  For example, an input of 256 wraps to 0 instead of saturating to 255.
+- Swapchain acquisition is bounded so lifecycle events can be processed;
+  the FPS counter only advances for a submitted game frame accepted for
+  presentation, rather than counting loading-screen redraws.
+
+Verification: ARM64/API 28 Release libraries compiled and linked; 66 tool tests
+and 71 regression tests discovered, with 134 passes and 3 missing-asset skips.
+The production-code probes cover 18 scenarios, including full-key deduplication,
+off-thread builds, worker shutdown, pipeline creation failure and independent pause
+owners. Six generated vertex/fragment shaders (untextured, textured, and
+16-stage materials with indirect texturing/fog/depth) compiled to SPIR-V using
+a host glslang WebAssembly build. Include-case and size checks pass.
+
+The signed APK has version code 15, the same tester application ID, and the
+same certificate as the previous test APK, allowing an update. Signature,
+archive payload, package metadata and alignment checks pass.
+
+APK SHA-256: `271b43960159691198fbb43fccfb48a5dc0b1b0c60550ec0ffd4a08197e805c9`.
+
+This moves previously hidden preparation into an explicit loading interval;
+it does not eliminate first-visit compilation time or preload every game
+asset. No A34 frame-time trace or post-change gameplay screenshots are
+available. The specific bright-band defect and other graphics problems are
+not declared solved without on-device verification.

@@ -67,7 +67,8 @@ public:
               HudMode hudMode = HudMode::Inline);
   uint64_t frameNumber() const { return mFrameNumber; }
   bool hasFrame() const { return mCurrentFrame != nullptr; }
-  void present(const VkTarget &target, int vpX, int vpY, int vpW, int vpH);
+  bool waitingForPipelines() const { return mPipelinesLoading; }
+  bool present(const VkTarget &target, int vpX, int vpY, int vpW, int vpH);
 
   void onWindowResized(ANativeWindow *window);
   void savePipelineCache();
@@ -115,11 +116,14 @@ public:
   VkPipeline createPipeline(const PipelineKey &key,
                             const std::vector<uint32_t> &vsSpirv,
                             const std::vector<uint32_t> &fsSpirv);
-  VkPipeline placeholderPipeline(const Item &it);
+  VkPipeline buildPipeline(const PipelineKey &key,
+                           const std::vector<uint32_t> &vsSpirv,
+                           const std::vector<uint32_t> &fsSpirv);
+  bool prepareFramePipelines(const Prepared &frame, HudMode hudMode);
 
   void startShaderWorker();
   void stopShaderWorker();
-  void requestShader(const ShaderUid &uid, const Item &it);
+  void requestPipeline(const PipelineKey &key, const ShaderUid &uid);
   void drainCompiledShaders();
   VkDescriptorSet
   getSamplerDescriptorSet(const std::array<VkImageView, 8> &views,
@@ -218,23 +222,29 @@ public:
   // Shader worker state
   struct CompiledShader {
     ShaderUid uid;
-    std::vector<uint32_t> vsSpirv, fsSpirv;
+    PipelineKey key;
+    VkPipeline pipeline = VK_NULL_HANDLE;
     bool ok = false;
+    bool knownUid = false;
     double ms = 0.0;
   };
   std::thread mShaderThread;
   std::mutex mShaderMutex;
   std::condition_variable mShaderCv;
-  std::deque<ShaderUid> mShaderQueue;
-  std::unordered_set<ShaderUid, ShaderUidHash> mShaderQueued;
+  struct PipelineRequest { PipelineKey key; ShaderUid uid; bool knownUid; };
+  std::deque<PipelineRequest> mShaderQueue;
   std::vector<CompiledShader> mShaderDone;
   std::unordered_set<ShaderUid, ShaderUidHash> mShaderFailed;
   bool mShaderStop = false;
-  std::unordered_map<ShaderUid, Item, ShaderUidHash> mShaderPendingItems;
+  std::unordered_set<PipelineKey, PipelineKeyHash> mPipelinePending;
+  std::unordered_set<PipelineKey, PipelineKeyHash> mPipelineFailed;
+  std::mutex mPipelineCompileMutex;
+  bool mPipelinesLoading = false;
   uint64_t mShaderCompiles = 0;
 
   // Caches
   std::unordered_map<PipelineKey, VkPipeline, PipelineKeyHash> mPipelines;
+  std::vector<VkPipeline> mDrawPipelines;
   PipelineMru mPipelineMru;
   uint64_t mPipelineMruHits = 0;
   uint64_t mPipelineMruMisses = 0;

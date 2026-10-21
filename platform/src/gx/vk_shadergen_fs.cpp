@@ -125,9 +125,11 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         {
             uint32_t ca = (cc >> 12) & 15, cb = (cc >> 8) & 15, cc2 = (cc >> 4) & 15, cd = cc & 15;
             uint32_t aa = (ac >> 13) & 7, ab = (ac >> 10) & 7, ac2 = (ac >> 7) & 7, ad = (ac >> 4) & 7;
-            o.w("  tevin_a = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[ca], kVkAlphaIn[aa]);
-            o.w("  tevin_b = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[cb], kVkAlphaIn[ab]);
-            o.w("  tevin_c = ivec4(clamp(%s, ivec3(0), ivec3(255)), clamp(%s, 0, 255));\n", kVkColorIn[cc2], kVkAlphaIn[ac2]);
+            // GX A/B/C inputs wrap to 8 bits; saturating signed intermediates
+            // changes multi-stage materials (e.g. -1 must feed 255, not zero).
+            o.w("  tevin_a = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[ca], kVkAlphaIn[aa]);
+            o.w("  tevin_b = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[cb], kVkAlphaIn[ab]);
+            o.w("  tevin_c = ivec4(%s, %s) & ivec4(255);\n", kVkColorIn[cc2], kVkAlphaIn[ac2]);
             o.w("  tevin_d = ivec4(clamp(%s, ivec3(-1024), ivec3(1023)), clamp(%s, -1024, 1023));\n", kVkColorIn[cd], kVkAlphaIn[ad]);
         }
 
@@ -181,8 +183,8 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         }
     }
 
-    // The TEV's output is 8 bits wide: clamp RGB and mask alpha (Mario's eyelids rely on 8-bit alpha wrap for test).
-    o.w("  ivec4 outi = ivec4(clamp(%s.rgb, ivec3(0), ivec3(255)), int(uint(%s.a) & 255u));\n", kVkDest[lastColorDest], kVkDest[lastAlphaDest]);
+    // The final RGB and alpha channels both retain the low eight bits.
+    o.w("  ivec4 outi = ivec4(ivec3(uvec3(%s.rgb) & uvec3(255u)), int(uint(%s.a) & 255u));\n", kVkDest[lastColorDest], kVkDest[lastAlphaDest]);
     o.w("  vec4 outc = vec4(outi) / 255.0;\n");
     // Alpha test.
     {

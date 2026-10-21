@@ -44,6 +44,9 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
     if (items.empty()) {
         return false;
     }
+    // Never submit a partially shaded scene. Prepare every exact pipeline
+    // before recording draws, while the last complete target remains intact.
+    if (!prepareFramePipelines(p, hudMode)) return false;
 
     if (!waitInFlightSubmissions("render")) {
         return false;
@@ -57,8 +60,6 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
         if (item.memory != VK_NULL_HANDLE) vkFreeMemory(mDevice, item.memory, nullptr);
     }
     mStagingBuffersToFree.clear();
-
-    drainCompiledShaders();
 
     mFrameIndex = (mFrameIndex + 1) % 2;
     FrameResource& fr = mFrameRes[mFrameIndex];

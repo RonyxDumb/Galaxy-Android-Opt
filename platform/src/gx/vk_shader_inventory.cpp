@@ -41,9 +41,9 @@ void ShaderInventory::init(const std::string& cacheDir, const std::string& dataR
     }
 }
 
-void ShaderInventory::addEntryLocked(const ShaderUid& uid, const PipelineKey& key,
+bool ShaderInventory::addEntryLocked(const ShaderUid& uid, const PipelineKey& key,
                                      const std::string& source, bool isRuntime) {
-    if (mKeyIndex.find(key) != mKeyIndex.end()) return;
+    if (mKeyIndex.find(key) != mKeyIndex.end()) return false;
 
     InventoryEntry e{};
     e.uid = uid;
@@ -59,6 +59,7 @@ void ShaderInventory::addEntryLocked(const ShaderUid& uid, const PipelineKey& ke
     }
     mStats.totalUniqueKeys = mKeyIndex.size();
     mStats.totalUniqueUids = mUidIndex.size();
+    return true;
 }
 
 void ShaderInventory::addEntry(const ShaderUid& uid, const PipelineKey& key,
@@ -131,23 +132,19 @@ void ShaderInventory::scanAssetDirectory(const std::string& filesDir) {
 }
 
 void ShaderInventory::recordRuntimeShaderUidMiss(const ShaderUid& uid, const PipelineKey& key, const char* source) {
-    addEntry(uid, key, source ? source : "runtime_uid_miss", true);
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (addEntryLocked(uid, key, source ? source : "runtime_uid_miss", true)) {
         mStats.runtimeShaderUidMisses++;
         mStats.runtimeDiscoveredEntries++;
     }
-    saveInventory();  // takes mMutex itself: never call while holding it
 }
 
 void ShaderInventory::recordRuntimePipelineKeyMiss(const ShaderUid& uid, const PipelineKey& key, const char* source) {
-    addEntry(uid, key, source ? source : "runtime_key_miss", true);
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (addEntryLocked(uid, key, source ? source : "runtime_key_miss", true)) {
         mStats.runtimePipelineKeyMisses++;
         mStats.runtimeDiscoveredEntries++;
     }
-    saveInventory();  // takes mMutex itself: never call while holding it
 }
 
 void ShaderInventory::incrementPlaceholderUses() {

@@ -219,6 +219,7 @@ void VkRenderer::onWindowResized(ANativeWindow* window) {
         }
 
         if (mSwapchainFormat != oldFormat) {
+            stopShaderWorker();
             LOGI("Swapchain format changed (%d -> %d); rebuilding render passes and pipelines",
                  (int)oldFormat, (int)mSwapchainFormat);
             destroyUiPipeline();
@@ -233,6 +234,7 @@ void VkRenderer::onWindowResized(ANativeWindow* window) {
                 LOGE("Failed to rebuild the swapchain-format dependent state");
                 return;
             }
+            startShaderWorker();
         } else if (!createSwapchainFramebuffers()) {
             LOGE("Failed to recreate swapchain framebuffers");
             return;
