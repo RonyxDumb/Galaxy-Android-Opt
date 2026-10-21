@@ -8,16 +8,63 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
+#include <thread>
+#include <vector>
 
 #include "vk_shadergen.h"
 #include "gx_shader_uid.h"
 #include "gx_record.h"
+#include "gx_builder.h"
 
 static uint32_t parseHex(const char* s) {
     return (uint32_t)strtoul(s, nullptr, 0);
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && strcmp(argv[1], "--state") == 0) {
+        gpu::Builder builder{};
+        builder.xfMem[0x600 + 10] = 1e18f;
+        gpu::LightState lights{};
+        builder.fillLights(lights);
+        if (lights.lights[0][3][0] != 1e18f) return 6;
+        for (auto& slot : builder.posSlot) slot = ~0u;
+        for (auto& slot : builder.nrmSlot) slot = ~0u;
+        builder.drawRecord(false, false, false, false, 0);
+        if (builder.recs[gpu::kRecMtxIdxA] != 0 || builder.recs[gpu::kRecMtxIdxB] != 0) return 7;
+        builder.bp[0] = 2 << 16;
+        builder.bp[0x25] = 0x4321;
+        builder.bp[0x26] = 0x8765;
+        auto uid = gpu::makeShaderUid(builder.bp, builder.xfRegs, 0, false);
+        if (uid.indScale[0] != 0x4321 || uid.indScale[1] != 0x8765) return 8;
+        return 0;
+    }
+    if (argc == 4 && strcmp(argv[1], "--uid") == 0) {
+        gpu::ShaderUid uid{};
+        FILE* in = fopen(argv[3], "rb");
+        if (!in) return 3;
+        size_t n = fread(&uid, 1, sizeof(uid), in);
+        fclose(in);
+        if (n != sizeof(uid)) return 4;
+        std::string out = strcmp(argv[2], "vs") == 0 ? gpu::genVulkanVertexShader(uid) : gpu::genVulkanFragmentShader(uid);
+        fwrite(out.data(), 1, out.size(), stdout);
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--threads") == 0) {
+        std::atomic<bool> bad{false};
+        std::vector<std::thread> threads;
+        for (int t = 0; t < 8; t++) threads.emplace_back([t, &bad] {
+            gpu::ShaderUid uid{};
+            uid.numTevStages = 1;
+            uid.alphaFunc = (t % 6 + 1) | (((t + 2) % 6 + 1) << 3);
+            std::string expected = gpu::genVulkanFragmentShader(uid);
+            for (int i = 0; i < 4000; i++) {
+                if (gpu::genVulkanFragmentShader(uid) != expected) bad = true;
+            }
+        });
+        for (auto& thread : threads) thread.join();
+        return bad ? 5 : 0;
+    }
     if (argc < 2) {
         fprintf(stderr, "usage: %s [--fs] <color-ctrl> [alpha-ctrl] [alpha-func]\n", argv[0]);
         return 2;

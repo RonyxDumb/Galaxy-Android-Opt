@@ -1,6 +1,6 @@
 """Deterministic checks on the generated GX vertex shaders.
 
-The generator is plain string building (platform/src/gx/gl_shadergen.cpp), so
+The generator is plain string building (platform/src/gx/vk_shadergen_*.cpp), so
 the part that decides what a lit vertex computes can be checked on the host: a
 small probe is compiled against the real generator and the emitted GLSL is
 inspected.  No GPU and no Android toolchain are involved.
@@ -18,7 +18,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 GX = ROOT / 'platform' / 'src' / 'gx'
 PROBE_SRC = Path(__file__).resolve().parent / 'shadergen_probe.cpp'
-GENERATOR_SRCS = [GX / 'vk_shadergen_vs.cpp', GX / 'vk_shadergen_fs.cpp', GX / 'vk_shadergen_tables.cpp', GX / 'gx_shader_uid.cpp']
+GENERATOR_SRCS = [GX / name for name in (
+    'vk_shadergen_vs.cpp', 'vk_shadergen_fs.cpp', 'vk_shadergen_tables.cpp',
+    'vk_shadergen_lighting.cpp', 'vk_shadergen_texgen.cpp', 'gx_shader_uid.cpp', 'gx_builder_state.cpp')]
 
 # XF channel control (GXLight.c: GXSetChanCtrl).  Bit 1 enables the channel,
 # bit 2 includes GX_LIGHT0, bits 7-8 are the diffuse function, bit 9 is
@@ -52,7 +54,7 @@ class ShaderGeneratorTests(unittest.TestCase):
             raise unittest.SkipTest('no C++ compiler on PATH (c++, g++ or clang++)')
         cls.tmp = tempfile.TemporaryDirectory()
         cls.probe = Path(cls.tmp.name) / 'shadergen_probe'
-        cmd = [cls.compiler, '-std=c++17', '-I', str(ROOT / 'platform' / 'src'), '-I', str(GX), '-I', str(ROOT / 'platform' / 'include'),
+        cmd = [cls.compiler, '-std=c++17', '-pthread', '-I', str(ROOT / 'platform' / 'src'), '-I', str(GX), '-I', str(ROOT / 'platform' / 'include'),
                str(PROBE_SRC)] + [str(s) for s in GENERATOR_SRCS] + ['-o', str(cls.probe)]
         built = subprocess.run(cmd, capture_output=True, text=True)
         if built.returncode != 0:
@@ -79,36 +81,45 @@ class ShaderGeneratorTests(unittest.TestCase):
     def test_af_none_does_not_attenuate(self):
         """GX_AF_NONE leaves lighting unattenuated."""
         src = self.shader(AF_NONE)
-        self.assertIn('(dist > 0.0 && false)', src)
-        self.assertNotIn('float a = (dist > 0.0 && true)', src)
+        self.assertIn('float a = 1.0;', src)
+        self.assertNotIn('float angle =', src)
+
+    def test_concurrent_generation_is_deterministic(self):
+        result = subprocess.run([str(self.probe), '--threads'], capture_output=True, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_recorded_light_position_and_zero_matrix_indices_are_preserved(self):
+        result = subprocess.run([str(self.probe), '--state'], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_af_spec_attenuates_specular(self):
         """GX_AF_SPEC computes distance/specular attenuation."""
         src = self.shader(AF_SPEC)
-        self.assertIn('float a = (dist > 0.0 && true)', src)
-        self.assertIn('(dist > 0.0 && false) ? max(0.0, dot(ldir, -lvec))', src)
+        self.assertIn('dot(nrm, lvec) >= 0.0', src)
+        self.assertIn('dot(nrm, fetch_st(b + 4u).xyz)', src)
+        self.assertIn('dot(da, angles)', src)
 
     def test_af_spot_still_attenuates(self):
         """Spot and distance attenuation keep working for GX_AF_SPOT/GX_AF_DIST."""
         src = self.shader(AF_SPOT)
-        self.assertIn('max(0.0, dot(ldir, -lvec))', src)
-        self.assertIn('float a = (dist > 0.0 && true)', src)
+        self.assertIn('dot(lvec, fetch_st(b + 4u).xyz)', src)
+        self.assertIn('dot(da, vec3(1.0, dist, d2))', src)
 
     def test_diffuse_is_never_gated_on_the_specular_angle(self):
         """AF_NONE and AF_SPOT do not gate on the specular angle."""
         for ctrl in (AF_NONE, AF_SPOT):
             with self.subTest(ctrl=hex(ctrl)):
-                self.assertIn('illum = clamp((dot(nrm, lvec) >= 0.0 ? dot(nrm, lvec) : 0.0), 0.0, 1.0);', self.shader(ctrl))
+                self.assertIn('illum = max(0.0, dot(nrm, lvec));', self.shader(ctrl))
 
     def test_disabled_channel_falls_back_to_the_material_colour(self):
         src = self.shader(UNLIT)
         self.assertIn('v_clr0.rgb = matColor[0].rgb;', src)
         self.assertNotIn('lit = ambColor', src)
 
-    def test_second_channel_is_the_vertex_colour_when_only_one_is_lit(self):
-        """numChans == 1: channel 1 passes the vertex colour through unlit."""
+    def test_second_channel_is_zero_when_only_one_is_enabled(self):
+        """XF exposes only numChans channels to TEV."""
         src = self.shader(AF_SPEC)
-        self.assertIn('v_clr1 = vclr1;', src)
+        self.assertIn('v_clr1 = vec4(0.0);', src)
         self.assertNotIn('v_clr1.rgb = matColor[1].rgb;', src)
 
     def test_mario_eye_alpha_wrap_and_alpha_test(self):

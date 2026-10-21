@@ -179,7 +179,6 @@ class TestVulkanRenderPassStateTracking(unittest.TestCase):
         Verify that GX TexCoordGen register (XF 0x40+i) decodes source_row
         from bits [11:7] (shift 7), mapping row 0 -> pos, row 1 -> normal,
         row 2 -> color, row 3 -> binormal, row 4 -> tangent, and rows 5..12 -> tex0..tex7.
-        Also verify that texture matrix index m defaults to 60 (identity) if 0.
         """
         # XF_TEX macro bit shifts from RVL_SDK / GDGeometry.h
         XF_TEX_PROJECTION_SHIFT = 1
@@ -213,11 +212,6 @@ class TestVulkanRenderPassStateTracking(unittest.TestCase):
         # Decode Normal as texgen (e.g. environment mapping / sky sphere)
         info_nrm = make_tex_info(XF_NORMAL_INROW)
         self.assertEqual((info_nrm >> 7) & 31, 1, "Normal source row must decode to 1")
-
-        # Verify identity matrix fallback for texture matrix index 0
-        m = 0
-        m_resolved = m if m != 0 else 60
-        self.assertEqual(m_resolved, 60, "Texture matrix 0 must resolve to GX_IDENTITY (row 60)")
 
 
 if __name__ == '__main__':

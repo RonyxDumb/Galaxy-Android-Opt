@@ -126,3 +126,60 @@ it does not eliminate first-visit compilation time or preload every game
 asset. No A34 frame-time trace or post-change gameplay screenshots are
 available. The specific bright-band defect and other graphics problems are
 not declared solved without on-device verification.
+
+## Material and texture follow-up — 0.0.4-a34.3
+
+New user screenshots still show the bright horizon band, pale/white characters
+and incorrect material colors. The following corrections address independently
+reproduced shader defects; the screenshots alone do not establish their causes.
+
+- XF lighting now accumulates ambient and light contributions, clamps that
+  illumination, then modulates the material using the 8-bit XF multiply. The
+  old shader added unmodulated ambient and could turn a red material white.
+  RGB/alpha retain separate material and ambient sources. Disabled raster
+  channels are zero instead of a synthetic white vertex color.
+- Signed diffuse lighting retains negative contributions. Specular attenuation
+  uses the surface normal/half-vector angle, and spot attenuation uses the
+  direction already converted by `GXInitLightDir`. Recorded light positions
+  are preserved rather than rescaled, which changed distance attenuation.
+- Texgen reads raw position/normal attributes and decodes projection bit 1
+  separately from input-form bit 2. Matrix zero remains valid, post-matrix
+  normalization is applied when requested, color texgens use lit colors, and
+  emboss texgens retain the transformed tangent scale. Both halves of each
+  indirect scale register are included in the shader UID.
+- TEV uses arithmetic shifts for signed intermediate division and consistent
+  interpolation rounding for alpha. Zero-valued channel swap tables are
+  honored. Alpha-test generation returns owned strings, removing shared
+  scratch buffers accessed by concurrent prewarm workers.
+
+Reference behavior was checked against the repository's `GXLight.c`,
+`GXAttr.c` and `GXTev.c`, and Dolphin's
+[lighting](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/VideoCommon/LightingShaderGen.cpp),
+[vertex](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/VideoCommon/VertexShaderGen.cpp)
+and pixel shader generators. The implementation remains in separate small
+lighting and texgen generator files.
+
+Verification: 85 tool tests and 71 regression tests, **153 passed, 3 skipped**
+for unavailable game fixtures. Seventeen numerical shader cases run on Mesa
+lavapipe. Each first compiles the original production vertex/fragment shader
+to SPIR-V, then executes its complete body through a compute-stage interface
+adapter and checks the returned colors/coordinates. This is not a rasterized
+gameplay test or a Mali driver test. CI installs software Vulkan and requires
+these tests rather than silently skipping them. An eight-thread test also
+checks 32,000 generated shader strings for deterministic alpha tests.
+
+The same execution harness was run against the previous committed generator:
+white ambient plus a red material produced `(1,1,1)` before and `(1,0,0)` after;
+an STQ coordinate with matrix Q=2 incorrectly produced Q=1 before and Q=2 after;
+the signed half-scale/wrap regression produced zero before and 255 after.
+
+ARM64/API 28 Release libraries compile/link, include-case and size checks pass,
+and APK signature, alignment, package identity and certificate continuity
+were checked. Version code **16**, tester package unchanged. The first graphics
+preparation may take longer because changed shader sources need compilation.
+
+APK SHA-256: `7a0c8fb12ea428db42afc0510fbd86a8087de62866f423dc853f66ac17203a65`.
+
+The new APK has not been run on the A34. The horizon band, remaining white
+objects and gameplay slowdown require another on-device check; none is
+declared fully resolved by these numerical tests.

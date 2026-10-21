@@ -86,25 +86,18 @@ std::string vkKonstAlpha(uint32_t sel) {
 std::string vkTevRegular(const char* comp, uint32_t bias, uint32_t sub, uint32_t scale, bool alpha) {
     static const char* biasStr[3] = {"", " + 128", " - 128"};
     static const char* scaleLeft[4] = {"", " * 2", " * 4", ""};
-    static const char* scaleRight[4] = {"", "", "", " / 2"};
-    const char* lerpBias = ((scale == 3) == alpha) ? (sub ? " + 127" : " + 128") : "";
+    static const char* scaleRight[4] = {"", "", "", " >> 1"};
+    const char* lerpBias = scale != 3 ? (sub ? " + 127" : " + 128") : "";
+    (void)alpha;
     char buf[512];
     snprintf(buf, sizeof(buf),
-             "((((tevin_d.%s%s)%s) %c (((((tevin_a.%s * 256) + (tevin_b.%s - tevin_a.%s) * (tevin_c.%s + (tevin_c.%s / 128)))%s)%s) / 256))%s)", comp,
+             "((((tevin_d.%s%s)%s) %c (((((tevin_a.%s * 256) + (tevin_b.%s - tevin_a.%s) * (tevin_c.%s + (tevin_c.%s >> 7)))%s)%s) >> 8))%s)", comp,
              biasStr[bias], scaleLeft[scale], sub ? '-' : '+', comp, comp, comp, comp, comp, scaleLeft[scale], lerpBias, scaleRight[scale]);
     return buf;
 }
 
 std::string vkSwapString(const ShaderUid& u, uint32_t table) {
     uint32_t lo = u.ksel[table * 2], hi = u.ksel[table * 2 + 1];
-    if ((lo & 0xFu) == 0 && (hi & 0xFu) == 0) {
-        switch (table & 3) {
-        case 0: return ".rgba";
-        case 1: return ".rrra";
-        case 2: return ".ggga";
-        case 3: return ".bbba";
-        }
-    }
     std::string s = ".";
     s += kVkComp[lo & 3];
     s += kVkComp[(lo >> 2) & 3];
@@ -113,10 +106,8 @@ std::string vkSwapString(const ShaderUid& u, uint32_t table) {
     return s;
 }
 
-const char* vkAlphaTest(uint32_t func, const char* ref) {
-    static char buf[4][96];
-    static int slot;
-    char* b = buf[slot++ & 3];
+std::string vkAlphaTest(uint32_t func, const char* ref) {
+    char b[96];
     switch (func) {
     case 0: return "false";
     case 1: snprintf(b, 96, "(a < %s)", ref); return b;

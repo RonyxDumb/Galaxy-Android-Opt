@@ -191,10 +191,10 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         uint32_t f0 = u.alphaFunc & 7, f1 = (u.alphaFunc >> 3) & 7, logic = (u.alphaFunc >> 6) & 3;
         if (!(f0 == 7 && f1 == 7)) {
             o.w("  float a = float(outi.a);\n");
-            const char* t0 = vkAlphaTest(f0, "alphaRef.x");
-            const char* t1 = vkAlphaTest(f1, "alphaRef.y");
+            std::string t0 = vkAlphaTest(f0, "alphaRef.x");
+            std::string t1 = vkAlphaTest(f1, "alphaRef.y");
             const char* ops[4] = {"&&", "||", "!=", "=="};
-            o.w("  if (!((%s) %s (%s))) discard;\n", t0, ops[logic], t1);
+            o.w("  if (!((%s) %s (%s))) discard;\n", t0.c_str(), ops[logic], t1.c_str());
         }
     }
     // Z texture.

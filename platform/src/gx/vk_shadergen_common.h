@@ -40,6 +40,8 @@ std::string vkKonstColor(uint32_t sel);
 std::string vkKonstAlpha(uint32_t sel);
 std::string vkTevRegular(const char* comp, uint32_t bias, uint32_t sub, uint32_t scale, bool alpha);
 std::string vkSwapString(const ShaderUid& u, uint32_t table);
-const char* vkAlphaTest(uint32_t func, const char* ref);
+std::string vkAlphaTest(uint32_t func, const char* ref);
+void vkGenerateLighting(VulkanShaderGenOut& o, const ShaderUid& u);
+void vkGenerateTexGens(VulkanShaderGenOut& o, const ShaderUid& u);
 
 }  // namespace gpu
