@@ -154,7 +154,19 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
     }
 
     if (mRenderSignaledSem) {
-        vkQueueWaitIdle(mQueue);
+        // Unconsumed binary semaphore from an earlier frame. Waiting is
+        // required before it can be signaled again, but expose this expensive
+        // fallback in performance telemetry rather than hiding a GPU stall.
+        const int64_t waitStartNs = port_host_time_ns();
+        VkResult waitRes = vkQueueWaitIdle(mQueue);
+        const int64_t waitNs = port_host_time_ns() - waitStartNs;
+        port_perf_queue_wait(waitNs);
+        if (waitNs > 50000000LL)
+            LOGW("Vulkan render queue idle stall: %lld ms", (long long)(waitNs / 1000000LL));
+        if (waitRes != VK_SUCCESS) {
+            markFatal("render", "vkQueueWaitIdle", (int)waitRes);
+            return false;
+        }
         mRenderSignaledSem = false;
     }
 
