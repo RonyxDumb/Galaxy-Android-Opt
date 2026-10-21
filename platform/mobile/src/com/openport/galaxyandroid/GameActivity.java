@@ -19,7 +19,7 @@ public class GameActivity extends NativeActivity {
         sInstance = this;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         applyFullscreen();
-        setPreferredRefreshRate(144.0f);
+        setPreferredRefreshRate(60.0f);
 
         if (!MainActivity.isGameDataReady(this)) {
             returnToLauncher();
@@ -103,6 +103,7 @@ public class GameActivity extends NativeActivity {
             sInstance.runOnUiThread(() -> {
                 try {
                     Intent intent = new Intent(sInstance, MainActivity.class);
+                    intent.putExtra("require_rom", true);
                     intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
                     sInstance.startActivity(intent);
                     sInstance.finish();

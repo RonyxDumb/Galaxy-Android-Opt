@@ -64,9 +64,15 @@ class Harness:
             raise AssertionError(r.stdout + r.stderr)
         return r.stdout
 
-    def execute(self, uid, rows, recs, states, stage='vs', attrs=None):
+    def execute(self, uid, rows, recs, states, stage='vs', attrs=None, universal=False):
         (self.base / 'uid').write_bytes(bytes(uid))
-        source = self.run([str(self.probe), '--uid', stage, str(self.base / 'uid')])
+        source = self.run([str(self.probe), '--uid', ('u' if universal else '') + stage, str(self.base / 'uid')])
+        if universal:
+            states = list(states)
+            recs = list(recs)
+            ub = len(states) // 4
+            states.extend(struct.unpack('<100f', bytes(uid) + bytes(4)))
+            recs[47] = ub
         # First validate the original vertex/fragment interface without adaptation.
         original = self.base / ('original.' + ('vert' if stage == 'vs' else 'frag'))
         original.write_text(source)
@@ -75,7 +81,7 @@ class Harness:
                       a_clr0='vec4(1.0)', a_clr1='vec4(1.0)', a_bin='vec3(0.0, 1.0, 0.0)',
                       a_tan='vec3(1.0, 0.0, 0.0)', v_pix='49u',
                       v_clr0='vec4(0.25, 0.5, 0.75, 1.0)', v_clr1='vec4(0.0)',
-                      v_viewz='0.0', v_gxz='0.0')
+                      v_viewz='0.0', v_gxz='0.0', v_uid=str(ub if universal else 0) + 'u')
         values.update(attrs or {})
 
         def variable(m):
@@ -86,8 +92,10 @@ class Harness:
         source = re.sub(r'layout\(location = \d+\) (?:flat )?(in|out) (\w+) (\w+);', variable, source)
         source = source.replace('void main()', 'void gx_main()').replace('discard;', 'return;')
         source = source.replace('#version 450', '#version 450\nlayout(local_size_x = 1) in;\n'
-                                'vec4 gl_Position;\nconst int gl_VertexIndex = 0;')
+                                'vec4 gl_Position;\nconst int gl_VertexIndex = 0;\n'
+                                'float gx_frag_depth = 0.25; const vec4 gx_frag_coord = vec4(0.5, 0.5, 0.25, 1.0);')
         source = source.replace('gl_Position', 'gx_position').replace('gl_VertexIndex', 'gx_vertex_index')
+        source = source.replace('gl_FragDepth', 'gx_frag_depth').replace('gl_FragCoord', 'gx_frag_coord')
         source += '\nlayout(std430, set = 2, binding = 0) buffer Results { vec4 results[]; };\n'
         source += 'void main() { gx_main(); '
         if stage == 'vs':
@@ -95,7 +103,7 @@ class Harness:
             for i in range(uid.numTexGens):
                 source += f'results[{i + 2}] = vec4(v_tex{i}, 1.0); '
         else:
-            source += 'results[0] = o_color; '
+            source += 'results[0] = o_color; results[10] = vec4(gx_frag_depth); '
         source += '}\n'
         compute = self.base / 'body.comp'
         compute.write_text(source)
@@ -110,7 +118,17 @@ class Harness:
         if r.returncode:
             raise AssertionError(r.stdout + r.stderr)
         result = struct.unpack('<64f', (self.base / 'result').read_bytes())
-        return [result[i:i + 4] for i in range(0, len(result), 4)]
+        result = [result[i:i + 4] for i in range(0, len(result), 4)]
+        if not universal:
+            general = self.execute(uid, rows, recs, states, stage, attrs, universal=True)
+            count = uid.numTexGens + 2 if stage == 'vs' else 1
+            for i in range(count):
+                for a, b in zip(result[i], general[i]):
+                    if abs(a - b) > 1e-5:
+                        raise AssertionError(f'universal shader differs at output {i}: {result[i]} vs {general[i]}')
+            if stage == 'fs' and abs(result[10][0] - general[10][0]) > 1e-5:
+                raise AssertionError(f'universal depth differs: {result[10][0]} vs {general[10][0]}')
+        return result
 
 
 def fixture(ctrl=2):

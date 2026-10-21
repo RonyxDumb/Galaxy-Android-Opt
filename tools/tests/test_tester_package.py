@@ -26,7 +26,7 @@ class TesterPackageTests(unittest.TestCase):
             self.assertEqual(manifest.get("package"), "com.openport.galaxyandroid.a34test")
             self.assertEqual(package, "com.openport.galaxyandroid")
             app = manifest.find("application")
-            self.assertEqual(app.get(NS + "label"), "Galaxy Android (Test)")
+            self.assertEqual(app.get(NS + "label"), "Super Mario Galaxy")
             activities = app.findall("activity")
             game = next(a for a in activities if a.get(NS + "name").endswith(".GameActivity"))
             self.assertEqual(game.get(NS + "name"), package + ".GameActivity")

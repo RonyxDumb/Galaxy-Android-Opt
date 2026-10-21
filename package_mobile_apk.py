@@ -32,7 +32,7 @@ def package_manifest(application_id=None):
     root.set("package", application_id)
     ns = "{http://schemas.android.com/apk/res/android}"
     app = root.find("application")
-    app.set(ns + "label", "Galaxy Android (Test)")
+    app.set(ns + "label", "Super Mario Galaxy")
     for activity in app.findall("activity"):
         name = activity.get(ns + "name", "")
         if name.startswith("."):
@@ -220,6 +220,12 @@ def main():
                     add_file(p, os.path.relpath(p, INSTALLER_DIR))
 
         vendor_zip = os.path.join(INSTALLER_DIR, "vendor", "python", "stdlib", "pythonhome.zip")
+        # Build the installed ROM's material inventory during extraction.
+        for name in ("install_manifest.py", "generate_shader_manifest.py", "manifest_schema.py",
+                     "j3d_mat3_parser.py", "j3d_shape_attrs.py", "j3d_gx_state.py",
+                     "j3d_material_state.py", "j3d_pipeline_key.py"):
+            add_file(os.path.join(ROOT, "tools", "cook", name), "assets/scripts/" + name)
+        add_file(os.path.join(ROOT, "tools", "rarc.py"), "assets/scripts/manifest_archive.py")
         if os.path.exists(vendor_zip):
             add_file(vendor_zip, "assets/pythonhome.zip")
 

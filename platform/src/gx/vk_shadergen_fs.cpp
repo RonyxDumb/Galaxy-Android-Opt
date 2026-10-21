@@ -1,8 +1,10 @@
 #include "vk_shadergen_common.h"
+#include "vk_uber.h"
 
 namespace gpu {
 
 std::string genVulkanFragmentShader(const ShaderUid& u) {
+    if (isUberShader(u)) return genUberFragmentShader();
     VulkanShaderGenOut o;
     o.w("#version 450\n");
     o.s += kVulkanUniformBlocksFs;
@@ -61,6 +63,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         }
     }
 
+    o.w("  int alphabump = 0;\n");
     uint32_t lastColorDest = 0, lastAlphaDest = 0;
     for (uint32_t s = 0; s < u.numTevStages; s++) {
         uint32_t order = (u.tevOrder[s / 2] >> ((s & 1) * 12)) & 0xFFF;
@@ -78,6 +81,11 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
             uv = b;
         }
         uint32_t ind = u.indCmd[s];
+        uint32_t bumpTex = ind & 3, bumpSel = (ind >> 7) & 3;
+        if (bumpSel && bumpTex < u.numIndStages) {
+            static const uint32_t shifts[4] = {0, 5, 4, 3};
+            o.w("  alphabump = (int(ind%u.%c) << %u) & 248;\n", bumpTex, "xyz"[bumpSel - 1], shifts[(ind >> 2) & 3]);
+        }
         if (u.numIndStages && ind) {
             uint32_t bt = ind & 3, bias = (ind >> 4) & 7, mtx = (ind >> 9) & 15;
             if (bt < u.numIndStages && mtx != 0) {
@@ -118,9 +126,11 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         } else {
             o.w("  tex = ivec4(0);\n");
         }
-        const char* rasSrc = (chan == 0 || chan == 2 || chan == 4) ? "v_clr0" : (chan == 1 || chan == 3 || chan == 5) ? "v_clr1" : "vec4(0.0)";
+        const char* rasSrc = chan == 0 ? "v_clr0" : chan == 1 ? "v_clr1" : "vec4(0.0)";
         o.w("  vec4 safeRas%u = (any(isnan(%s)) || any(isinf(%s))) ? vec4(0.0) : clamp(%s, 0.0, 1.0);\n", s, rasSrc, rasSrc, rasSrc);
         o.w("  ras = ivec4(round(safeRas%u%s * 255.0));\n", s, vkSwapString(u, rswap).c_str());
+        if (chan == 5) o.w("  ras = ivec4(alphabump);\n");
+        if (chan == 6) o.w("  ras = ivec4(alphabump | (alphabump >> 5));\n");
         o.w("  kc = %s;\n  ka = %s;\n", vkKonstColor(kcsel).c_str(), vkKonstAlpha(kasel).c_str());
         {
             uint32_t ca = (cc >> 12) & 15, cb = (cc >> 8) & 15, cc2 = (cc >> 4) & 15, cd = cc & 15;

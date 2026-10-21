@@ -3,6 +3,12 @@
 
 namespace gpu {
 
+void VkRenderer::nativeTargetSize(int& width, int& height) const {
+    width = mPrepared ? int(mPrepared->nativeW) : 640;
+    height = mPrepared ? int(mPrepared->nativeH) : 456;
+}
+
+
 bool VkRenderer::update() {
     std::lock_guard<std::recursive_mutex> lock(mRenderMutex);
     auto latest = frameQueue().latest();

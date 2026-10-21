@@ -3,6 +3,7 @@
 #include "gx/vk_shader_catalog.h"
 #include "gx/vk_shadergen.h"
 #include "gx/vk_renderer.h"
+#include "gx/vk/vk_uber_pipeline.h"
 #include "port/port.h"
 
 #include <chrono>
@@ -160,6 +161,9 @@ void ShaderInventory::compileAllSpirv(int maxWorkers, std::function<void(int don
         for (const auto& kv : mUidIndex) uniqueUids.push_back(kv.first);
     }
 
+    std::unordered_set<uint32_t> layouts;
+    for (const auto& uid : uniqueUids) layouts.insert(uid.vtxFlags);
+    for (uint32_t flags : layouts) uniqueUids.push_back(uberShaderUid(flags));
     const int total = (int)uniqueUids.size();
     if (total == 0) return;
 
@@ -215,6 +219,9 @@ void ShaderInventory::prewarmPipelines(VkRenderer& renderer, std::function<void(
     auto start = std::chrono::steady_clock::now();
     int created = 0, reused = 0, spirvMiss = 0, pipeFail = 0, unsupported = 0;
 
+    std::unordered_set<PipelineKey, PipelineKeyHash> families;
+    for (const auto& entry : entriesCopy) families.insert(uberPipelineKey(entry.key));
+    for (const auto& key : families) renderer.prewarmExactPipeline(key, key.uid);
     for (int i = 0; i < total; i++) {
         PrewarmResult res = renderer.prewarmExactPipeline(entriesCopy[i].key, entriesCopy[i].uid);
         if (res == PrewarmResult::Created) { created++; entriesCopy[i].pipelineReady = true; }

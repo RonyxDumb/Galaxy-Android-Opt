@@ -44,13 +44,18 @@ except ImportError:  # imported as tools.cook.generate_shader_manifest
     )
 
 try:
-    from tools.rarc import yaz0_decompress, rarc_list
+    # The Android installer bundles the canonical endian-aware reader under
+    # this name, independently of its older conversion helper named rarc.
+    from manifest_archive import yaz0_decompress, rarc_list
 except ImportError:
     try:
-        from rarc import yaz0_decompress, rarc_list
-    except ImportError:  # reported as a diagnostic, not a silent skip
-        yaz0_decompress = None
-        rarc_list = None
+        from tools.rarc import yaz0_decompress, rarc_list
+    except ImportError:
+        try:
+            from rarc import yaz0_decompress, rarc_list
+        except ImportError:  # reported as a diagnostic, not a silent skip
+            yaz0_decompress = None
+            rarc_list = None
 
 try:
     from tools.cook.j3d_mat3_parser import parse_j3d_mat3

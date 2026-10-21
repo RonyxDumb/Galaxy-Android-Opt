@@ -155,6 +155,7 @@ void MobileApp::updateInputState() {
         mPad.stickY = 0.0f;
     }
     mPad.buttons = mGamepad.buttons() | mobile_ui::UIOverlay::get().getTouchButtons();
+    mPad.rightStickX = mPad.rightStickY = 0.0f;
     port_input_set(0, &mPad);
 }
 
@@ -203,12 +204,8 @@ void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
         port_log_file((ext + "/galaxy_log.txt").c_str());
     }
 
-    mobile_render::VulkanLifecycle::initCaches(internalPath);
-
-    mDataRoot = mobile_system::StorageManager::findGameData(ext);
-    if (mDataRoot.empty()) {
-        mobile_system::StorageManager::promptStoragePermissionIfMissing(app->activity);
-    }
+    mDataRoot = mobile_system::StorageManager::findGameData(ext, internalPath);
+    mobile_render::VulkanLifecycle::initCaches(internalPath, mDataRoot);
 
     bool running = true;
     while (running && !app->destroyRequested) {

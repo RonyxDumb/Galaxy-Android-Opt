@@ -77,7 +77,7 @@ struct Builder {
     std::vector<Item> items;
     std::vector<ShaderUid> uids;
     std::vector<float> rows, states;
-    std::vector<u32> recs, vtxRec, indices;
+    std::vector<u32> recs, vtxRec, indices, uidStateBases;
     CameraInfo cam;
     u32 clearAR = 0, clearGB = 0, clearZ = 0xFFFFFF;
     u32 nativeW = 640, nativeH = 456;
@@ -113,7 +113,7 @@ struct Builder {
     u32 appendRows(const float* src, int n, int stride);
     u32 addState(const float* data, size_t vec4s);
     void invalidateXf(u32 a0, u32 a1);
-    u32 drawRecord(bool useVr, bool sky, bool pointer, bool dualTex, u32 numTexGens);
+    u32 drawRecord(bool useVr, bool sky, bool pointer, bool dualTex, u32 numTexGens, u32 shaderBase = 0);
     u32 screenTexGens(const Frame& f, const Item& it, u32 first, const ShaderUid& uid);
     u32 uidFor(const ShaderUid& uid);
     void appendIndices(u32 kind, u32 base, u32 count);

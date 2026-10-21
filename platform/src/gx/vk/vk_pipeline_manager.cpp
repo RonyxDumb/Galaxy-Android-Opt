@@ -1,6 +1,7 @@
 #include "gx/vk/vk_common.h"
 #include "gx/vk_shader_inventory.h"
 #include "gx/vk/vk_pipeline_blend.h"
+#include "gx/vk/vk_uber_pipeline.h"
 
 namespace gpu {
 
@@ -41,6 +42,14 @@ VkPipeline VkRenderer::getPipeline(const Item& it, const ShaderUid& uid) {
         return found->second;
     }
     if (!mPipelineFailed.count(key)) requestPipeline(key, uid);
+    const PipelineKey general = uberPipelineKey(key);
+    auto fallback = mPipelines.find(general);
+    if (fallback != mPipelines.end()) return fallback->second;
+    // Material/TEV changes normally reuse a family prepared at startup. A new
+    // fixed-function raster state needs a driver pipeline, but no game pause.
+    if (prewarmExactPipeline(general, general.uid) == PrewarmResult::Created) {
+        return mPipelines.at(general);
+    }
     return VK_NULL_HANDLE;
 }
 
@@ -103,7 +112,8 @@ bool VkRenderer::prepareFramePipelines(const Prepared& frame, HudMode hudMode) {
             }
         }
     }
-    mPipelinesLoading = !ready && !mFatal;
+    mPipelinesLoading = false;
+    if (!ready && !mFatal) markFatal("prepare pipelines", "universal pipeline unavailable", 0);
     return ready;
 }
 

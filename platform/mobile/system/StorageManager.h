@@ -14,7 +14,7 @@ public:
     static bool checkGameFolder(const std::string& dir, bool* ready = nullptr);
 
     // Scans standard external, internal, and MicroSD mount paths for Super Mario Galaxy data
-    static std::string findGameData(const std::string& extDir);
+    static std::string findGameData(const std::string& extDir, const std::string& internalDir = "");
 
     // Prompts user for Android 11+ MANAGE_EXTERNAL_STORAGE permission if not granted
     static void promptStoragePermissionIfMissing(ANativeActivity* activity);

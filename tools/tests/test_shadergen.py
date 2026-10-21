@@ -20,7 +20,7 @@ GX = ROOT / 'platform' / 'src' / 'gx'
 PROBE_SRC = Path(__file__).resolve().parent / 'shadergen_probe.cpp'
 GENERATOR_SRCS = [GX / name for name in (
     'vk_shadergen_vs.cpp', 'vk_shadergen_fs.cpp', 'vk_shadergen_tables.cpp',
-    'vk_shadergen_lighting.cpp', 'vk_shadergen_texgen.cpp', 'gx_shader_uid.cpp', 'gx_builder_state.cpp')]
+    'vk_shadergen_lighting.cpp', 'vk_shadergen_texgen.cpp', 'gx_shader_uid.cpp', 'gx_builder_state.cpp', 'gx_builder_draw.cpp', 'vk_uber_vs.cpp', 'vk_uber_fs.cpp')]
 
 # XF channel control (GXLight.c: GXSetChanCtrl).  Bit 1 enables the channel,
 # bit 2 includes GX_LIGHT0, bits 7-8 are the diffuse function, bit 9 is

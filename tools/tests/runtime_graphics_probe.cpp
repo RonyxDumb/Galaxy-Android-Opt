@@ -1,6 +1,7 @@
 #include "gx/vk/vk_common.h"
 #include "gx/vk_shader_inventory.h"
 #include "gx/vk_shader_manifest.h"
+#include "gx/vk/vk_uber_pipeline.h"
 #include "port/pause_state.h"
 #include <atomic>
 #include <cassert>
@@ -19,7 +20,7 @@ static std::unordered_set<gpu::ShaderUid, gpu::ShaderUidHash> spirv;
 extern "C" void port_log(const char*, ...) {}
 extern "C" int __android_log_print(int, const char*, const char*, ...) { return 0; }
 extern "C" VkResult vkCreateShaderModule(VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule*) { return VK_ERROR_DEVICE_LOST; }
-extern "C" void vkDestroyPipeline(VkDevice, VkPipeline pipeline, const VkAllocationCallbacks*) { assert(pipeline); destroyed++; }
+extern "C" void vkDestroyPipeline(VkDevice, VkPipeline pipeline, const VkAllocationCallbacks*) { assert(pipeline); if ((uintptr_t)pipeline < 1000) destroyed++; }
 
 namespace gpu {
 bool lookupVulkanShader(const ShaderUid& uid, std::vector<uint32_t>& vs, std::vector<uint32_t>& fs) {
@@ -85,18 +86,21 @@ int main(int argc, char** argv) {
     }
     gpu::VkRenderer r;
     gpu::Prepared frame = scene();
+    for (size_t i = 0; i < frame.items.size(); i++) {
+        r.mPipelines.emplace(gpu::uberPipelineKey(gpu::pipelineKeyFor(frame.items[i], frame.uids[0])), (VkPipeline)(uintptr_t)(1000 + i));
+    }
     if (!strcmp(argv[1], "deduplicate")) {
         r.startShaderWorker();
-        assert(!r.prepareFramePipelines(frame, gpu::HudMode::Inline));
-        assert(r.waitingForPipelines());
-        assert(!r.mDrawPipelines[0] && !r.mDrawPipelines[1]);
+        assert(r.prepareFramePipelines(frame, gpu::HudMode::Inline));
+        assert(!r.waitingForPipelines());
+        assert((uintptr_t)r.mDrawPipelines[0] == 1000 && (uintptr_t)r.mDrawPipelines[1] == 1001);
         waitForResults(r, 2);
         // Completion alone does not remove the pending marker: repeated asks
         // before publishing must not queue another compile or driver build.
-        for (int i = 0; i < 1000; i++) assert(!r.getPipeline(frame.items[0], frame.uids[0]));
-        assert(r.mPipelinePending.size() == 2 && r.mPipelines.empty());
+        for (int i = 0; i < 1000; i++) assert((uintptr_t)r.getPipeline(frame.items[0], frame.uids[0]) == 1000);
+        assert(r.mPipelinePending.size() == 2 && r.mPipelines.size() == 2);
         assert(r.prepareFramePipelines(frame, gpu::HudMode::Inline));
-        assert(!r.waitingForPipelines() && r.mPipelines.size() == 2);
+        assert(!r.waitingForPipelines() && r.mPipelines.size() == 4);
         assert(r.mDrawPipelines[0] && r.mDrawPipelines[1] && r.mDrawPipelines[0] != r.mDrawPipelines[1]);
         assert(built == 2 && compiled == 1);
         auto stats = gpu::ShaderInventory::get().stats();
@@ -114,10 +118,11 @@ int main(int argc, char** argv) {
     } else if (!strcmp(argv[1], "failure")) {
         failDriver = true;
         r.startShaderWorker();
-        assert(!r.prepareFramePipelines(frame, gpu::HudMode::Inline));
+        assert(r.prepareFramePipelines(frame, gpu::HudMode::Inline));
         waitForResults(r, 2);
-        assert(!r.prepareFramePipelines(frame, gpu::HudMode::Inline));
-        assert(r.hasFailed() && !r.waitingForPipelines() && r.mPipelines.empty());
+        assert(r.prepareFramePipelines(frame, gpu::HudMode::Inline));
+        assert(!r.hasFailed() && !r.waitingForPipelines() && r.mPipelines.size() == 2);
+        assert(r.mPipelineFailed.size() == 2);
     } else if (!strcmp(argv[1], "inventory")) {
         const auto dir = std::filesystem::temp_directory_path() / ("galaxy-inventory-" + std::to_string((uintptr_t)&r));
         std::filesystem::create_directories(dir);
@@ -130,6 +135,18 @@ int main(int argc, char** argv) {
         inv.saveInventory(); assert(std::filesystem::is_regular_file(path));
         std::vector<gpu::ManifestStagedEntry> loaded; uint32_t version = 0;
         assert(gpu::parseAssetManifest(path.string(), loaded, version) && loaded.size() == 1);
+        // An installed disc's full manifest must win over the APK's small seed.
+        const auto game = dir / "game", cache = dir / "cache";
+        std::filesystem::create_directories(game / "files");
+        std::filesystem::create_directories(cache);
+        auto seed = loaded;
+        seed[0].uid.numTevStages = 9;
+        seed[0].key.uid = seed[0].uid;
+        assert(gpu::writeAssetManifest((cache / "galaxy_shader_manifest.bin").string(), seed, gpu::kBuildVersion));
+        assert(gpu::writeAssetManifest((game / "galaxy_shader_manifest.bin").string(), loaded, gpu::kBuildVersion));
+        gpu::ShaderInventory selected;
+        selected.init(cache.string(), game.string());
+        assert(selected.activeManifestPath() == (game / "galaxy_shader_manifest.bin").string());
         std::filesystem::remove_all(dir);
     } else { return 2; }
 }

@@ -16,6 +16,7 @@
 #include "gx_shader_uid.h"
 #include "gx_record.h"
 #include "gx_builder.h"
+#include "vk_uber.h"
 
 static uint32_t parseHex(const char* s) {
     return (uint32_t)strtoul(s, nullptr, 0);
@@ -37,6 +38,11 @@ int main(int argc, char** argv) {
         builder.bp[0x26] = 0x8765;
         auto uid = gpu::makeShaderUid(builder.bp, builder.xfRegs, 0, false);
         if (uid.indScale[0] != 0x4321 || uid.indScale[1] != 0x8765) return 8;
+        auto i = builder.uidFor(uid);
+        auto base = builder.uidStateBases[i];
+        if (memcmp(builder.states.data() + base * 4, &uid, sizeof(uid)) != 0) return 9;
+        auto record = builder.drawRecord(false, false, false, false, 0, base);
+        if (builder.recs[record * gpu::kRecWords + gpu::kRecShaderUid] != base) return 10;
         return 0;
     }
     if (argc == 4 && strcmp(argv[1], "--uid") == 0) {
@@ -46,7 +52,10 @@ int main(int argc, char** argv) {
         size_t n = fread(&uid, 1, sizeof(uid), in);
         fclose(in);
         if (n != sizeof(uid)) return 4;
-        std::string out = strcmp(argv[2], "vs") == 0 ? gpu::genVulkanVertexShader(uid) : gpu::genVulkanFragmentShader(uid);
+        bool universal = argv[2][0] == 'u';
+        bool vertex = strcmp(argv[2], "vs") == 0 || strcmp(argv[2], "uvs") == 0;
+        if (universal) uid = gpu::uberShaderUid(uid.vtxFlags);
+        std::string out = vertex ? gpu::genVulkanVertexShader(uid) : gpu::genVulkanFragmentShader(uid);
         fwrite(out.data(), 1, out.size(), stdout);
         return 0;
     }

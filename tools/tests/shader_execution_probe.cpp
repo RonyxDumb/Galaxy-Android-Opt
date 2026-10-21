@@ -10,6 +10,8 @@ static void check(VkResult r) {
     if (r != VK_SUCCESS) { fprintf(stderr, "Vulkan result %d\n", r); std::exit(2); }
 }
 
+#include "shader_execution_image.h"
+
 static std::vector<char> readFile(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) std::exit(3);
@@ -88,13 +90,16 @@ int main(int argc, char** argv) {
     VkDescriptorSetLayoutCreateInfo lci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     lci.bindingCount = 5; lci.pBindings = bindings;
     check(vkCreateDescriptorSetLayout(device, &lci, nullptr, &layouts[0]));
-    lci.bindingCount = 0;
+    VkDescriptorSetLayoutBinding textures[8]{};
+    for (int i = 0; i < 8; i++) textures[i] = {uint32_t(i), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    lci.bindingCount = 8; lci.pBindings = textures;
     check(vkCreateDescriptorSetLayout(device, &lci, nullptr, &layouts[1]));
+    lci.pBindings = bindings;
     lci.bindingCount = 1;
     check(vkCreateDescriptorSetLayout(device, &lci, nullptr, &layouts[2]));
-    VkDescriptorPoolSize sizes[2] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}};
+    VkDescriptorPoolSize sizes[3] = {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8}};
     VkDescriptorPoolCreateInfo dpci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    dpci.maxSets = 3; dpci.poolSizeCount = 2; dpci.pPoolSizes = sizes;
+    dpci.maxSets = 3; dpci.poolSizeCount = 3; dpci.pPoolSizes = sizes;
     VkDescriptorPool pool;
     check(vkCreateDescriptorPool(device, &dpci, nullptr, &pool));
     VkDescriptorSetAllocateInfo dsai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
@@ -111,6 +116,15 @@ int main(int argc, char** argv) {
         writes[i].pBufferInfo = &dbi[i];
     }
     vkUpdateDescriptorSets(device, 6, writes, 0, nullptr);
+    ShaderTestImage sampled;
+    sampled.create(device, props);
+    VkDescriptorImageInfo imageInfo{sampled.sampler, sampled.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    for (uint32_t i = 0; i < 8; i++) {
+        VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w.dstSet = sets[1]; w.dstBinding = i; w.descriptorCount = 1;
+        w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w.pImageInfo = &imageInfo;
+        vkUpdateDescriptorSets(device, 1, &w, 0, nullptr);
+    }
     VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, 4};
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     plci.setLayoutCount = 3; plci.pSetLayouts = layouts; plci.pushConstantRangeCount = 1; plci.pPushConstantRanges = &push;
@@ -137,6 +151,7 @@ int main(int argc, char** argv) {
     check(vkAllocateCommandBuffers(device, &cbai, &cmd));
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     check(vkBeginCommandBuffer(cmd, &begin));
+    sampled.prepare(cmd);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 3, sets, 0, nullptr);
     uint32_t ordinal = 0;
@@ -167,6 +182,7 @@ int main(int argc, char** argv) {
     vkDestroyDescriptorPool(device, pool, nullptr);
     for (auto l : layouts) vkDestroyDescriptorSetLayout(device, l, nullptr);
     for (int i = 0; i < 6; i++) { vkDestroyBuffer(device, buffers[i], nullptr); vkFreeMemory(device, memory[i], nullptr); }
+    sampled.destroy(device);
     vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
 }

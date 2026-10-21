@@ -183,3 +183,69 @@ APK SHA-256: `7a0c8fb12ea428db42afc0510fbd86a8087de62866f423dc853f66ac17203a65`.
 The new APK has not been run on the A34. The horizon band, remaining white
 objects and gameplay slowdown require another on-device check; none is
 declared fully resolved by these numerical tests.
+
+## Original game profile and hybrid shaders — 0.0.4-a34.4
+
+The launcher is now **Super Mario Galaxy**. It offers one action, selecting
+and extracting the user's ROM, then opens the game. Existing usable data opens
+directly. Installation uses the document picker grant and app-owned storage;
+the freshly extracted app-owned disc takes precedence over legacy shared data.
+Movies are included. The launcher no longer presents resolution presets,
+custom-driver controls, telemetry, Discord prompts or an install options panel.
+
+The mobile profile ignores old touch-settings files and uses original assets,
+the game's native EFB dimensions, its 16:9 presentation and the normal 60 Hz
+simulation/presentation target. Shield textures/movies/control changes,
+Riivolution, cheats, adaptive FPS and resolution scaling are disabled. The
+added orbital-camera code is excluded from the mobile build. The touch stick
+is fixed, screen touch drives the star pointer, and the four direction buttons
+drive the game's original camera. The original pause button is available;
+the port's settings cog, quick-save dock and drawer are absent. Tap handling
+now distinguishes pointer taps from stick/button releases, and B does not
+also press A during gameplay.
+
+The launcher cover comes from the user's supplied image. Android 8+ adaptive
+resources use that image, and Android 13+ resources include a monochrome Luma
+mask derived from it, for launchers with themed icons enabled. No generated
+replacement illustration is used.
+
+Graphics preparation no longer freezes the game or displays a mid-game shader
+loading toast. Universal vertex/fragment shaders interpret the actual recorded
+GX material state while specialized shaders compile on the worker. The normal
+draw buffers carry a separate packed material block per unique UID. Pipeline
+families known to the inventory are prepared at startup with their real depth,
+blend, vertex layout and raster state; specialized shaders replace the general
+ones when available. These are functional material interpreters, rather than
+flat-color substitute pipelines.
+
+During a new ROM extraction, the installer now scans the cooked disc's actual
+models and writes its material manifest before reporting completion. It ships
+the canonical CRAR reader separately from the older conversion reader. The
+renderer prefers this installed-disc manifest to the small APK seed, and
+initializes caches using the selected data root rather than a fixed path.
+The APK seed is copied before NativeActivity starts, avoiding its startup race.
+Indirect bump raster channels and normalized bump alpha also now follow their
+GX values instead of incorrectly aliasing vertex color channels.
+
+Validation: **89 tool tests and 71 regression tests, 157 passed and 3 asset
+skips**. Nineteen shader tests perform 102 software-Vulkan executions, comparing
+the specialized and universal shader bodies, including 32 deterministic
+multistage textured materials, alpha/depth behavior and indirect bump channels.
+Native probes cover the locked profile, fixed-stick and multitouch behavior,
+pointer/camera separation, button semantics, non-blocking shader completion
+and installed-disc manifest preference. A separate isolated-Python test runs
+the shipped flat module layout against a synthetic cooked archive. ARM64/API
+28 Release libraries build and link; the APK's resources, label, payload,
+alignment, certificate continuity and signature are checked.
+
+Remaining limits: software Vulkan is not the A34's Mali driver, and no ROM or
+physical Android device is available here. First startup still prepares caches.
+A previously unseen fixed-function pipeline state can require driver creation
+on first use, and a new vertex layout can require a universal variant; that can
+still hitch. Universal shaders can also be slower while the specialized ones
+are pending. This removes the intentional shader-loading pause without claiming
+zero stutter, a measured FPS improvement, or complete resolution of the latest
+white/black material defects. Existing installations retain their data and
+saves; the per-disc manifest is generated when the ROM is extracted again.
+
+APK SHA-256 (version code 17): `f1cdeb73eabc22cce37cd896c5d068465cce35d403eaf081231477893044f899`.

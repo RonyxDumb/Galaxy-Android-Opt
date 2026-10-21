@@ -10,78 +10,11 @@
 namespace mobile_ui {
 
 void Settings::load(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) return;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        char key[64];
-        float val = 0.0f;
-        if (sscanf(line, "%63[^=]=%f", key, &val) == 2) {
-            if (!strcmp(key, "show_controls")) showControls = (val > 0.5f);
-            else if (!strcmp(key, "fullscreen")) fullscreen = (val > 0.5f);
-            else if (!strcmp(key, "opacity")) opacity = std::max(0.1f, std::min(1.0f, val));
-            else if (!strcmp(key, "scale")) scale = std::max(0.6f, std::min(1.6f, val));
-            else if (!strcmp(key, "dynamic_stick")) dynamicStick = (val > 0.5f);
-            else if (!strcmp(key, "stick_offset_x")) stickOffsetX = val;
-            else if (!strcmp(key, "stick_offset_y")) stickOffsetY = val;
-            else if (!strcmp(key, "button_offset_x")) buttonOffsetX = val;
-            else if (!strcmp(key, "button_offset_y")) buttonOffsetY = val;
-            else if (!strcmp(key, "btn_a_offset_x")) btnAOffsetX = val;
-            else if (!strcmp(key, "btn_a_offset_y")) btnAOffsetY = val;
-            else if (!strcmp(key, "btn_b_offset_x")) btnBOffsetX = val;
-            else if (!strcmp(key, "btn_b_offset_y")) btnBOffsetY = val;
-            else if (!strcmp(key, "btn_z_offset_x")) btnZOffsetX = val;
-            else if (!strcmp(key, "btn_z_offset_y")) btnZOffsetY = val;
-            else if (!strcmp(key, "btn_spin_offset_x")) btnSpinOffsetX = val;
-            else if (!strcmp(key, "btn_spin_offset_y")) btnSpinOffsetY = val;
-            else if (!strcmp(key, "star_stick_offset_x")) starStickOffsetX = val;
-            else if (!strcmp(key, "star_stick_offset_y")) starStickOffsetY = val;
-            else if (!strcmp(key, "show_dpad")) showDpad = (val > 0.5f);
-            else if (!strcmp(key, "dpad_on_right")) dpadOnRight = (val > 0.5f);
-            else if (!strcmp(key, "dpad_offset_x")) dpadOffsetX = val;
-            else if (!strcmp(key, "dpad_offset_y")) dpadOffsetY = val;
-            else if (!strcmp(key, "mod_shield_textures")) modShieldTextures = (val > 0.5f);
-            else if (!strcmp(key, "mod_shield_cutscenes")) modShieldCutscenes = (val > 0.5f);
-            else if (!strcmp(key, "mod_shield_controls")) modShieldControls = (val > 0.5f);
-            else if (!strcmp(key, "mod_classic_gamepad_ui")) modClassicGamepadUI = (val > 0.5f);
-            else if (!strcmp(key, "mod_riivolution")) modRiivolution = (val > 0.5f);
-            else if (!strcmp(key, "mod_fly")) modFly = (val > 0.5f);
-            else if (!strcmp(key, "mod_skip_cutscenes")) modSkipCutscenes = (val > 0.5f);
-            else if (!strcmp(key, "mod_infinite_health")) modInfiniteHealth = (val > 0.5f);
-            else if (!strcmp(key, "mod_infinite_lives")) modInfiniteLives = (val > 0.5f);
-            else if (!strcmp(key, "mod_infinite_starbits")) modInfiniteStarBits = (val > 0.5f);
-            else if (!strcmp(key, "game_speed")) gameSpeed = std::max(1, std::min(5, (int)val));
-            else if (!strcmp(key, "language_choice")) languageChoice = std::max(0, std::min(5, (int)val));
-            else if (!strcmp(key, "render_scale")) renderScale = std::max(0, std::min(3, (int)val));
-            else if (!strcmp(key, "target_fps")) {
-                int v = (int)val;
-                if (v >= 144) targetFps = 144;
-                else if (v >= 120) targetFps = 120;
-                else if (v >= 90) targetFps = 90;
-                else if (v >= 60) targetFps = 60;
-                else targetFps = 30;
-            }
-            else if (!strcmp(key, "display_refresh_rate")) preferredRefreshRate = (int)val;
-            else if (!strcmp(key, "adaptive_fps")) adaptiveFps = (val > 0.5f);
-            else if (!strcmp(key, "battery_saver")) batterySaver = (val > 0.5f);
-            else if (!strcmp(key, "gyro_aiming")) gyroAiming = (val > 0.5f);
-            else if (!strcmp(key, "gyro_invert_x")) gyroInvertX = (val > 0.5f);
-            else if (!strcmp(key, "gyro_invert_y")) gyroInvertY = (val > 0.5f);
-            else if (!strcmp(key, "star_stick")) starStick = (val > 0.5f);
-            else if (!strcmp(key, "stick_sensitivity")) stickSensitivity = std::max(0.25f, std::min(3.0f, val));
-            else if (!strcmp(key, "star_stick_sensitivity")) starStickSensitivity = std::max(0.25f, std::min(3.0f, val));
-            else if (!strcmp(key, "right_stick_mode")) rightStickMode = std::max(0, std::min(1, (int)val));
-            else if (!strcmp(key, "touch_camera")) touchCamera = (val > 0.5f);
-            else if (!strcmp(key, "graphics_backend")) graphicsBackend = (int)val;
-            else if (!strcmp(key, "relative_pointer")) relativePointer = (val > 0.5f);
-            else if (!strcmp(key, "perf_hud")) perfHudMode = std::max(0, std::min(2, (int)val));
-            else if (!strcmp(key, "full_touch_mode")) fullTouchMode = (val > 0.5f);
-            else if (!strcmp(key, "screen_orientation")) screenOrientationChoice = std::max(0, std::min(2, (int)val));
-            else if (!strcmp(key, "speedrun_hud")) speedrunHud = (val > 0.5f);
-        }
-    }
-    fclose(f);
-    LOGI("Loaded settings from %s", path.c_str());
+    (void)path;
+    // This build always uses the original game profile, including on upgrade.
+    // Old HD, camera, cheat and pacing preferences must not survive migration.
+    *this = Settings{};
+
 }
 
 void Settings::save(const std::string& path) const {

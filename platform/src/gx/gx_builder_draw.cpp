@@ -29,6 +29,10 @@ u32 Builder::uidFor(const ShaderUid& uid) {
     if (it != uidIndex.end()) return it->second;
     u32 i = (u32)uids.size();
     uids.push_back(uid);
+    static_assert(sizeof(ShaderUid) == 99 * sizeof(u32), "update universal shader layout");
+    float packed[100]{};
+    memcpy(packed, &uid, sizeof(uid));
+    uidStateBases.push_back(addState(packed, 25));
     uidIndex.emplace(uid, i);
     return i;
 }
@@ -191,7 +195,7 @@ void Builder::emitDraw(u32 prim, u32 flags, u32 first, u32 count, u32& ordinal) 
         it.texMode1[t] = used ? bp[m0[t] + 4] : 0;
     }
 
-    u32 rec = drawRecord(it.useVr, inSky, inPointer, uid.dualTex != 0, uid.numTexGens);
+    u32 rec = drawRecord(it.useVr, inSky, inPointer, uid.dualTex != 0, uid.numTexGens, uidStateBases[it.uid]);
     u32 firstOrdinal = ordinal;
     ordinal += count;
     vtxRec.insert(vtxRec.end(), count, rec);

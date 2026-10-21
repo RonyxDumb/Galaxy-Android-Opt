@@ -68,6 +68,7 @@ public:
   uint64_t frameNumber() const { return mFrameNumber; }
   bool hasFrame() const { return mCurrentFrame != nullptr; }
   bool waitingForPipelines() const { return mPipelinesLoading; }
+  void nativeTargetSize(int& width, int& height) const;
   bool present(const VkTarget &target, int vpX, int vpY, int vpW, int vpH);
 
   void onWindowResized(ANativeWindow *window);

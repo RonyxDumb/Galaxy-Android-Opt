@@ -198,7 +198,7 @@ void Builder::invalidateXf(u32 a0, u32 a1) {
     if (a1 > 0x101C && a0 < 0x1027) projBase = ~0u;
 }
 
-u32 Builder::drawRecord(bool useVr, bool sky, bool pointer, bool dualTex, u32 numTexGens) {
+u32 Builder::drawRecord(bool useVr, bool sky, bool pointer, bool dualTex, u32 numTexGens, u32 shaderBase) {
     u32 rec[kRecWords];
     memset(rec, 0, sizeof(rec));
     for (int i = 0; i < 22; i++) {
@@ -234,6 +234,7 @@ u32 Builder::drawRecord(bool useVr, bool sky, bool pointer, bool dualTex, u32 nu
     rec[kRecLights] = lightBase;
     rec[kRecProj] = projBase;
     rec[kRecPixel] = pixBase;
+    rec[kRecShaderUid] = shaderBase;
     rec[kRecMtxIdxA] = xfRegs[0x18];
     rec[kRecMtxIdxB] = xfRegs[0x19];
     rec[kRecFlags] = (useVr ? 1u : 0u) | (sky ? 2u : 0u) | (pointer ? 4u : 0u);

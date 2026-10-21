@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.openport.galaxyandroid"
-    android:versionCode="16"
-    android:versionName="0.0.4-a34.3"
+    android:versionCode="17"
+    android:versionName="0.0.4-a34.4"
     android:installLocation="auto">
 
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
@@ -30,8 +30,9 @@
          APKs by sideload only.
          extractNativeLibs="true" is likewise required for wrap.sh. -->
     <application
-        android:label="Galaxy Android"
+        android:label="Super Mario Galaxy"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:theme="@style/Theme.GalaxyAndroid"
         android:hasCode="true"

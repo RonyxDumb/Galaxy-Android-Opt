@@ -44,43 +44,6 @@ void OverlayRenderer::generateVertices(int screenW, int screenH,
         renderControls(vb, screenW, screenH, settings, layoutMgr, touchHandler, hudOp);
     }
 
-    // 2. Realtime Hardware Telemetry Performance HUD
-    if (settings.perfHudMode > 0 && !layoutMgr.isEditMode()) {
-        renderPerfHud(vb, screenW, screenH, settings, perfMon, uiScale);
-    }
-
-    // 3. Speedrun & Practice Telemetry HUD
-    if (settings.speedrunHud && !layoutMgr.isEditMode()) {
-        renderSpeedrunHud(vb, settings, uiScale);
-    }
-
-    // 4. Settings Cogwheel Tab Dock & Quick Save Button
-    if (drawerAnim < 0.95f) {
-        float tabW = 52.0f * uiScale;
-        float tabH = 44.0f * uiScale;
-        float tabY = 20.0f * uiScale;
-        float tabPr = touchHandler.btnCfgPressed() ? 0.92f : 1.0f;
-        float cogRot = drawerAnim * 1.5707963f;
-
-        vb.drawRoundRect(-10.0f, tabY, tabW * tabPr, tabY + tabH, 16.0f * uiScale, rgba(0.08f, 0.09f, 0.12f, 0.70f));
-        vb.drawRoundRect(-10.0f, tabY, tabW * tabPr, tabY + tabH, 16.0f * uiScale, rgba(0.80f, 0.85f, 0.92f, 0.15f));
-        vb.drawCogwheel(tabW * 0.48f, tabY + tabH * 0.5f, 13.0f * uiScale, rgba(0.85f, 0.88f, 0.94f, 0.90f), cogRot);
-
-        float qsX = tabW + 14.0f * uiScale;
-        float qsW = 54.0f * uiScale;
-        vb.drawRoundRect(qsX, tabY + 4.0f * uiScale, qsX + qsW, tabY + tabH - 4.0f * uiScale, 12.0f * uiScale, rgba(0.08f, 0.09f, 0.12f, 0.70f));
-        vb.drawRoundRect(qsX, tabY + 4.0f * uiScale, qsX + qsW, tabY + tabH - 4.0f * uiScale, 12.0f * uiScale, rgba(0.80f, 0.85f, 0.92f, 0.15f));
-        vb.drawText("SAVE", qsX + qsW * 0.5f, tabY + tabH * 0.5f + 3.0f * uiScale, 0.25f * uiScale, rgba(0.88f, 0.92f, 0.96f, 0.90f), 1);
-    }
-
-    // 5. Layout Edit Drag Overlay
-    if (layoutMgr.isEditMode()) {
-        renderEditLayoutOverlay(vb, screenW, screenH, settings, layoutMgr);
-    }
-
-    // 6. Modern Side-Sheet Drawer
-    menuHandler.renderDrawer(vb, screenW, screenH, settings, saveMgr, perfMon, activeBackend);
-
     // 7. Save Notification Toast
     if (toastTimer > 0.0f) {
         renderToast(vb, screenW, screenH, toastMessage, toastTimer, uiScale);
@@ -94,6 +57,12 @@ void OverlayRenderer::renderControls(VertexBatcher& vb, int screenW, int screenH
     float scale = baseDpi * settings.scale;
     float w = (float)screenW;
     float h = (float)screenH;
+
+    // The original game's pause control.
+    float pauseX = w - 65.0f * scale, pauseY = 65.0f * scale;
+    vb.drawCircle(pauseX, pauseY, 28.0f * scale, rgba(0.05f, 0.07f, 0.10f, opacity * 0.4f));
+    vb.drawRing(pauseX, pauseY, 28.0f * scale, 0.94f, rgba(0.85f, 0.90f, 0.96f, opacity * 0.5f));
+    vb.drawText("+", pauseX, pauseY + 7.0f * scale, 0.6f * scale, rgba(0.9f, 0.94f, 1.0f, opacity), 1);
 
     // Movement Stick
     float defaultStickX = 175.0f * scale + settings.stickOffsetX;

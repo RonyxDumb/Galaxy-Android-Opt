@@ -1,5 +1,6 @@
 """Numeric regressions for GX lighting, texgen and TEV on software Vulkan."""
 import math
+import random
 import unittest
 from tools.tests import shader_execution as execution
 
@@ -140,6 +141,41 @@ class ShaderExecutionTests(unittest.TestCase):
         args[3][49 * 4 + 3] = 128 / 255
         args[3][50 * 4 + 3] = 1 / 255
         self.assertAlmostEqual(self.harness.execute(*args, stage='fs')[0][3], 1 / 255, places=6)
+
+    def test_material_permutations_match_universal_shader(self):
+        rng = random.Random(0x47414c41)
+        for case in range(32):
+            with self.subTest(material=case):
+                args = execution.fixture()
+                uid, _, _, states = args
+                uid.numTexGens = 1
+                uid.numTevStages = 1 + case % 16
+                uid.numIndStages = 1
+                uid.texMtxInfo[0] = 5 << 7
+                uid.zTex = (1 + case % 2) << 2 | case % 3
+                for i in range(16):
+                    states[49 * 4 + i] = rng.randrange(-1024, 1024) / 255
+                    states[53 * 4 + i] = rng.randrange(256) / 255
+                for s in range(uid.numTevStages):
+                    order = (s % 8) | 64 | ((case % 2) << 7)
+                    uid.tevOrder[s // 2] |= order << ((s & 1) * 12)
+                    uid.tevColor[s] = rng.randrange(1 << 24)
+                    uid.tevAlpha[s] = rng.randrange(1 << 24)
+                    uid.ksel[s // 2] |= (rng.choice([0, 7, 12, 15, 16, 31]) << (4 + (s & 1) * 10))
+                    uid.ksel[s // 2] |= (rng.choice([0, 7, 16, 31]) << (9 + (s & 1) * 10))
+                    uid.indCmd[s] = (1 << 9) | (3 << 7)
+                self.harness.execute(*args, stage='fs', attrs={'v_gxz': '0.25'})
+
+    def test_indirect_bump_channels_are_not_vertex_colors(self):
+        for channel, expected in ((5, 128), (6, 132)):
+            args = execution.fixture()
+            uid = args[0]
+            uid.numTexGens = uid.numIndStages = 1
+            uid.tevOrder[0] = channel << 7
+            uid.indCmd[0] = 3 << 7  # bump U = green byte (128), format 8 bits
+            out = self.harness.execute(*args, stage='fs')[0]
+            for color in out:
+                self.assertAlmostEqual(color, expected / 255, places=6)
 
 
 if __name__ == '__main__':

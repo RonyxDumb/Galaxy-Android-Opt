@@ -15,6 +15,7 @@ enum : uint32_t {
     kRecMtxIdxA = 44,    // XF 0x18 (default matrix indices)
     kRecMtxIdxB = 45,    // XF 0x19
     kRecFlags = 46,      // bit 0: VR camera, bit 1: sky, bit 2: pointer cursor
+    kRecShaderUid = 47, // base of the packed GX state for the universal shader
     kRecWords = 48,
 };
 

@@ -1,8 +1,10 @@
 #include "vk_shadergen_common.h"
+#include "vk_uber.h"
 
 namespace gpu {
 
 std::string genVulkanVertexShader(const ShaderUid& u) {
+    if (isUberShader(u)) return genUberVertexShader(u);
     VulkanShaderGenOut o;
     o.w("#version 450\n");
     o.s += kVulkanUniformBlocksVs;

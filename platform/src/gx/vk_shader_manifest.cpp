@@ -20,9 +20,9 @@ std::vector<std::string> getManifestCandidates(const std::string& cacheDir,
                                               const std::string& dataRoot,
                                               const std::string& filesDir) {
     return {
-        cacheDir + "/galaxy_shader_manifest.bin",
-        filesDir + "/galaxy_shader_manifest.bin",
         dataRoot + "/galaxy_shader_manifest.bin",
+        filesDir + "/galaxy_shader_manifest.bin",
+        cacheDir + "/galaxy_shader_manifest.bin",
         "/sdcard/GalaxyData/galaxy_shader_manifest.bin",
         "assets/galaxy_shader_manifest.bin"
     };

@@ -21,10 +21,9 @@ void ScenePresenter::presentVulkan(gpu::VkRenderer& vkr, gpu::VkTarget& target,
     const auto& settings = ui.settings();
     bool rendered = false;
 
-    if (newFrame || vkr.waitingForPipelines()) {
+    if (newFrame) {
         int width = 0, height = 0;
-        mobile_display::ViewportManager::computeTargetSize(screenW, screenH,
-            settings.renderScale, settings.batterySaver, settings.fullscreen, width, height);
+        vkr.nativeTargetSize(width, height);
         if (!target.framebuffer || target.width != width || target.height != height) {
             gpu::VkTarget replacement = vkr.createTarget(width, height);
             if (replacement.framebuffer) {
@@ -39,16 +38,9 @@ void ScenePresenter::presentVulkan(gpu::VkRenderer& vkr, gpu::VkTarget& target,
         if (rendered) ui.reportGpuRenderTime(duration);
     }
 
-    const bool loading = vkr.waitingForPipelines();
-    port_set_render_loading(loading ? 1 : 0);
-    static bool wasLoading = false;
-    if (loading && !wasLoading) ui.showToast("Preparing graphics...");
-    if (!loading && wasLoading) ui.showToast("Graphics ready");
-    wasLoading = loading;
-
     const bool redrawUi = ui.needsRedraw() &&
         (!gameBooted || port_is_paused() || ui.isSettingsOpen());
-    if (rendered || loading || redrawUi) {
+    if (rendered || redrawUi) {
         const int fps = settings.batterySaver ? 30 : settings.targetFps;
         framePacer.sync(app, fps, port_get_game_speed());
         vpMgr.update(screenW, screenH, settings.fullscreen);
