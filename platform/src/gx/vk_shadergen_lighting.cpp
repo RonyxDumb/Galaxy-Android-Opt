@@ -3,8 +3,9 @@
 namespace gpu {
 
 void vkGenerateLighting(VulkanShaderGenOut& o, const ShaderUid& u) {
-    o.w("  vec4 vclr0 = %s;\n", (u.vtxFlags & VF_CLR0) ? "a_clr0" : "vec4(1.0)");
-    o.w("  vec4 vclr1 = %s;\n", (u.vtxFlags & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
+    const bool both = (u.vtxFlags & (VF_CLR0 | VF_CLR1)) == (VF_CLR0 | VF_CLR1);
+    o.w("  vec4 vclr0 = %s;\n", (u.vtxFlags & VF_CLR0) ? "a_clr0" : (u.vtxFlags & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
+    o.w("  vec4 vclr1 = %s;\n", both ? "a_clr1" : "vec4(1.0)");
     for (int c = 0; c < 2; c++) {
         if ((uint32_t)c >= u.numChans) {
             o.w("  v_clr%d = vec4(0.0);\n", c);

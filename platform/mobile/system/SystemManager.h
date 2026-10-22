@@ -8,7 +8,7 @@ namespace mobile_system {
 class SystemManager {
 public:
     // Installs crash handlers for SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT
-    static void installCrashHandlers();
+    static void installCrashHandlers(const char* privateDirectory);
 
     // Pins calling thread to CPU big/prime performance cores
     static void pinThreadToPerformanceCores();

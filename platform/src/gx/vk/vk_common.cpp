@@ -52,10 +52,12 @@ void VkRenderer::flushDeferredDeletes() {
     }
     for (const VkPendingDelete& d : list) {
         if (d.generation != sVkDeviceGeneration) continue;
+        if (d.view) invalidateSamplerDescSetsForView((VkImageView)d.view);
         if (d.view) vkDestroyImageView(mDevice, (VkImageView)d.view, nullptr);
         if (d.image) vkDestroyImage(mDevice, (VkImage)d.image, nullptr);
         if (d.memory) vkFreeMemory(mDevice, (VkDeviceMemory)d.memory, nullptr);
     }
+    releaseRetiredImageSets();
 }
 
 void VkRenderer::trimFrameCaches(uint64_t frame) {
@@ -63,7 +65,7 @@ void VkRenderer::trimFrameCaches(uint64_t frame) {
     const uint64_t kKeepFrames = 1200;
     for (auto it = mSamplerDescSets.begin(); it != mSamplerDescSets.end();) {
         if (it->second.set != VK_NULL_HANDLE && it->second.lastUse + kKeepFrames < frame) {
-            vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &it->second.set);
+            mRetiredImageSets.push_back(it->second);
             it = mSamplerDescSets.erase(it);
         } else {
             ++it;

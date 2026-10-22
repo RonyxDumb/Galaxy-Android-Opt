@@ -76,19 +76,7 @@ bool VkRenderer::createDescriptorLayouts() {
         return false;
     }
 
-    // 2. Dynamic Sampler Descriptor Pool (dedicated exclusively to transient sampler sets)
-    VkDescriptorPoolSize poolSizes[] = {
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 65536},
-    };
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = poolSizes;
-    poolInfo.maxSets = 8192;
-
-    return vkCreateDescriptorPool(mDevice, &poolInfo, nullptr, &mDescriptorPool) == VK_SUCCESS;
+    return growSamplerPool();
 }
 
 VkDescriptorSet VkRenderer::getSamplerDescriptorSet(const std::array<VkImageView, 8>& views,
@@ -100,28 +88,9 @@ VkDescriptorSet VkRenderer::getSamplerDescriptorSet(const std::array<VkImageView
         return it->second.set;
     }
 
-    VkDescriptorSetAllocateInfo ai{};
-    ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    ai.descriptorPool = mDescriptorPool;
-    ai.descriptorSetCount = 1;
-    ai.pSetLayouts = &mTextureDescLayout;
-
-    VkDescriptorSet set = VK_NULL_HANDLE;
-    if (vkAllocateDescriptorSets(mDevice, &ai, &set) != VK_SUCCESS) {
-        // Safe recovery: wait for in-flight render fence submissions, reset sampler pool,
-        // and reallocate. Static descriptor sets (SSBOs, UI, Present) in mStaticDescPool
-        // are untouched and remain completely valid!
-        waitInFlightSubmissions("samplerPoolReset");
-        vkResetDescriptorPool(mDevice, mDescriptorPool, 0);
-        mSamplerDescSets.clear();
-        // Every set handed out before the reset is now invalid, including the
-        // one the draw loop still caches as its last bound set.
-        mSamplerDescEpoch++;
-        if (vkAllocateDescriptorSets(mDevice, &ai, &set) != VK_SUCCESS) {
-            LOGE("getSamplerDescriptorSet: allocation failed even after pool reset");
-            return VK_NULL_HANDLE;
-        }
-    }
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    VkDescriptorSet set = allocateImageSet(mTextureDescLayout, pool);
+    if (!set) return VK_NULL_HANDLE;
 
     std::array<VkDescriptorImageInfo, 8> imageInfos{};
     std::array<VkWriteDescriptorSet, 8> writes{};
@@ -141,6 +110,7 @@ VkDescriptorSet VkRenderer::getSamplerDescriptorSet(const std::array<VkImageView
     vkUpdateDescriptorSets(mDevice, 8, writes.data(), 0, nullptr);
     SamplerSetEntry entry;
     entry.set = set;
+    entry.pool = pool;
     entry.lastUse = mFrameNumber;
     mSamplerDescSets[key] = entry;
     return set;

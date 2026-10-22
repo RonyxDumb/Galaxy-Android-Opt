@@ -79,7 +79,8 @@ bool VkRenderer::selectPhysicalDevice() {
         for (uint32_t i = 0; i < queueFamilyCount; i++) {
             VkBool32 presentSupport = false;
             vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, mSurface, &presentSupport);
-            if ((queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && presentSupport) {
+            const auto required = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+            if ((queueFamilies[i].queueFlags & required) == required && presentSupport) {
                 vkGetPhysicalDeviceProperties(dev, &mDeviceProperties);
                 if (mDeviceProperties.apiVersion < VK_API_VERSION_1_0) continue;
                 mPhysicalDevice = dev;

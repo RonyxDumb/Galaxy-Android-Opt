@@ -138,6 +138,7 @@ struct Recorder final : Backend {
     u32 peekColor(u16, u16) override { return 0; }
     u32 peekZ(u16, u16) override { return 0x00FFFFFF; }
     void endFrame();
+    void snapshotEfbCopies();
 };
 
 extern Recorder* sRecorder;

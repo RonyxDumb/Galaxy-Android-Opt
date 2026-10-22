@@ -61,6 +61,7 @@ void Recorder::resolveTextures() {
                 c.push_back(info ? info->width : 1);
                 c.push_back(info ? info->height : 1);
                 c.push_back(addr);
+                frame->liveEfbCopies.push_back(addr);
             } else {
                 c.push_back(CMD_TEX);
                 c.push_back(unit);

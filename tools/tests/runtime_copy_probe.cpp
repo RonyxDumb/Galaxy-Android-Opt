@@ -26,6 +26,14 @@ extern "C" void vkCmdClearAttachments(VkCommandBuffer, uint32_t n, const VkClear
 
 namespace gpu {
 void VkRenderer::shutdown() {}
+void VkRenderer::markFatal(const char*, const char*, int) { assert(false); }
+bool VkRenderer::copyEfbTexture(VkCommandBuffer, VkTarget&, VkCopyTex& dst, int x, int y, int w, int h, uint32_t, uint32_t) {
+    copied.srcOffsets[0] = {x, y, 0};
+    copied.srcOffsets[1] = {x + w, y + h, 1};
+    copied.dstOffsets[1] = {dst.w, dst.h, 1};
+    copyCalls++;
+    return true;
+}
 VkCopyTex& VkRenderer::getCopyTex(uint64_t, int w, int h) {
     texture.w = w; texture.h = h; texture.image = (VkImage)(uintptr_t)1;
     return texture;

@@ -19,6 +19,14 @@ class ShaderExecutionTests(unittest.TestCase):
         rgba = self.harness.execute(*args)[0]
         self.assertEqual(rgba, (1.0, 0.0, 0.0, 1.0))
 
+    def test_only_color1_attribute_feeds_channel_zero(self):
+        args = execution.fixture(ctrl=1)
+        args[0].alphaCtrl[0] = 1
+        args[0].vtxFlags = 2 | 16  # Normal + CLR1, no CLR0.
+        out = self.harness.execute(*args, attrs={'a_clr1': 'vec4(0.2, 0.4, 0.6, 0.8)'})[0]
+        for got, want in zip(out, (0.2, 0.4, 0.6, 0.8)):
+            self.assertAlmostEqual(got, want, places=6)
+
     def test_lights_saturate_before_material_modulation(self):
         args = execution.fixture(ctrl=2 | 4)
         args[3][160:164] = [128 / 255, 64 / 255, 0.0, 1.0]
