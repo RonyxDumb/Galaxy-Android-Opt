@@ -1,5 +1,7 @@
 import os
 import collections
+import shutil
+import thp
 import rarc_swap
 import collision
 import dol_data

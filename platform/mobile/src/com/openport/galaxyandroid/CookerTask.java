@@ -2,13 +2,15 @@ package com.openport.galaxyandroid;
 
 import android.app.Activity;
 import android.net.Uri;
-import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class CookerTask {
     private static final String TAG = "CookerTask";
@@ -24,154 +26,129 @@ public final class CookerTask {
     public static void start(Activity activity, Handler handler, String selectedPath, Uri selectedUri,
                              String selectedDisplayName, boolean includeMovies, CookerTaskListener listener) {
         new Thread(() -> {
+            File cachedDisc = null;
+            File extractedDisc = null;
+            boolean success = false;
+            String resultMessage = "Installazione non completata.";
+            AtomicReference<String> lastError = new AtomicReference<>();
+            CookerEngine.CookerCallback callback = new CookerEngine.CookerCallback() {
+                @Override public void onLog(String line) {
+                    if (line != null && (line.startsWith("[ERROR]") || line.startsWith("[Error]")
+                            || line.startsWith("[Python Error]") || line.startsWith("[Cook Warning]")
+                            || line.contains("Error:"))) lastError.set(line);
+                    if (listener != null) listener.onLog(line);
+                }
+                @Override public void onProgress(int percent, String message) {
+                    if (listener != null) listener.onProgress(percent, message);
+                }
+                // The synchronous JNI methods return their result; they do not send this callback.
+                @Override public void onFinished(boolean finished, String message) {}
+            };
             try {
                 File appStorage = activity.getExternalFilesDir(null);
                 if (appStorage == null) appStorage = activity.getFilesDir();
                 File outputDir = new File(appStorage, "GalaxyData");
                 if (!outputDir.isDirectory() && !outputDir.mkdirs()) {
-                    throw new java.io.IOException("Cannot create installation directory");
+                    throw new IOException("Impossibile creare la cartella del gioco.");
                 }
-                if (listener != null) listener.onLog("[Storage] Target installation directory: " + outputDir.getAbsolutePath());
+                File pending = new File(outputDir, ".installing");
+                if (!pending.exists() && !pending.createNewFile()) {
+                    throw new IOException("Impossibile iniziare l’installazione.");
+                }
+                new File(outputDir, ".installed_ok").delete();
+                callback.onLog("[Storage] Target installation directory: " + outputDir.getAbsolutePath());
 
-                String testName = !selectedDisplayName.isEmpty() ? selectedDisplayName : selectedPath;
-                String lowerName = testName.toLowerCase();
-                boolean isDiscImage = lowerName.endsWith(".rvz") || lowerName.endsWith(".wbfs")
-                        || lowerName.endsWith(".iso") || lowerName.endsWith(".gcm");
+                String name = selectedDisplayName == null ? "" : selectedDisplayName;
+                if (name.isEmpty()) name = selectedPath == null ? "" : selectedPath;
+                String lower = name.toLowerCase(Locale.ROOT);
+                if (!(lower.endsWith(".rvz") || lower.endsWith(".wbfs")
+                        || lower.endsWith(".iso") || lower.endsWith(".gcm"))) {
+                    throw new IOException("Seleziona una ROM .iso, .rvz, .wbfs o .gcm.");
+                }
 
-                File resolvedDiscFile = null;
-                if (isDiscImage) {
-                    if (new File(selectedPath).exists()) {
-                        resolvedDiscFile = new File(selectedPath);
-                    } else if (selectedUri != null) {
-                        if (listener != null) {
-                            listener.onLog("[Setup] Reading disc image: " + selectedDisplayName);
-                            listener.onProgress(-1, "Caching disc image for extraction...");
-                        }
-                        String ext = lowerName.endsWith(".rvz") ? "rvz" : lowerName.endsWith(".wbfs") ? "wbfs" : "iso";
-                        File tempDisc = new File(activity.getFilesDir(), "temp_disc." + ext);
-                        if (tempDisc.exists()) tempDisc.delete();
-                        try (InputStream in = activity.getContentResolver().openInputStream(selectedUri);
-                             FileOutputStream out = new FileOutputStream(tempDisc)) {
-                            byte[] buf = new byte[1024 * 1024];
-                            int read;
-                            long total = 0;
-                            while ((read = in.read(buf)) > 0) {
-                                out.write(buf, 0, read);
-                                total += read;
-                                if (total % (50 * 1024 * 1024) == 0) {
-                                    final long mb = total / (1024 * 1024);
-                                    if (listener != null) listener.onProgress(-1, "Buffered " + mb + " MB...");
-                                }
+                File disc = selectedPath == null ? null : new File(selectedPath);
+                if (disc == null || !disc.isFile()) {
+                    if (selectedUri == null) throw new IOException("La ROM selezionata non è accessibile.");
+                    String extension = lower.endsWith(".rvz") ? "rvz" : lower.endsWith(".wbfs") ? "wbfs" : "iso";
+                    cachedDisc = new File(activity.getFilesDir(), "temp_disc." + extension);
+                    callback.onProgress(-1, "Lettura della ROM…");
+                    try (InputStream in = activity.getContentResolver().openInputStream(selectedUri);
+                         FileOutputStream out = new FileOutputStream(cachedDisc)) {
+                        if (in == null) throw new IOException("Impossibile leggere la ROM selezionata.");
+                        byte[] buffer = new byte[1024 * 1024];
+                        int count;
+                        long total = 0, reported = 0;
+                        while ((count = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, count);
+                            total += count;
+                            if (total - reported >= 50L * 1024 * 1024) {
+                                reported = total;
+                                callback.onProgress(-1, "ROM letta: " + total / (1024 * 1024) + " MB");
                             }
                         }
-                        resolvedDiscFile = tempDisc;
                     }
+                    disc = cachedDisc;
                 }
 
-                File extractionDir = outputDir;
-                File tempExtractionDir = null;
-
-                if (isDiscImage && resolvedDiscFile != null && resolvedDiscFile.exists()) {
-                    tempExtractionDir = new File(activity.getFilesDir(), "temp_extracted");
-                    CookerEngine.deleteRecursive(tempExtractionDir);
-                    tempExtractionDir.mkdirs();
-
-                    final String discPathToExtract = resolvedDiscFile.getAbsolutePath();
-                    if (listener != null) listener.onProgress(-1, "Extracting disc partition...");
-
-                    CookerEngine.CookerCallback extractCallback = new CookerEngine.CookerCallback() {
-                        @Override public void onLog(String line) {
-                            if (listener != null) listener.onLog(line);
-                        }
-                        @Override public void onProgress(int percent, String message) {
-                            if (listener != null) listener.onProgress(percent, message);
-                        }
-                        @Override public void onFinished(boolean success, String message) {}
-                    };
-
-                    boolean extractSuccess = false;
-                    try {
-                        if (listener != null) listener.onLog("[Installer] Attempting fast in-process native disc extraction...");
-                        int res = CookerEngine.extractDisc(discPathToExtract, tempExtractionDir.getAbsolutePath(), includeMovies, extractCallback);
-                        extractSuccess = (res == 0);
-                    } catch (Throwable t) {
-                        if (listener != null) listener.onLog("[Installer] In-process extraction exception: " + t.getMessage());
-                        extractSuccess = false;
-                    }
-
-                    if (!extractSuccess) {
-                        if (listener != null) listener.onLog("[Installer] In-process extraction returned non-zero, trying fallback extractor...");
-                        extractSuccess = CookerEngine.extractWithNodtool(
-                            activity, discPathToExtract, tempExtractionDir.getAbsolutePath(), includeMovies, extractCallback
-                        );
-                    }
-
-                    if (resolvedDiscFile.getAbsolutePath().startsWith(activity.getFilesDir().getAbsolutePath())) {
-                        resolvedDiscFile.delete();
-                    }
-
-                    if (!extractSuccess) {
-                        handler.post(() -> {
-                            if (listener != null) listener.onCompleted(false, "Native disc extraction failed.");
-                        });
-                        return;
-                    }
-                    extractionDir = tempExtractionDir;
+                extractedDisc = new File(activity.getFilesDir(), "temp_extracted");
+                CookerEngine.deleteRecursive(extractedDisc);
+                if (!extractedDisc.mkdirs()) throw new IOException("Impossibile preparare la cartella temporanea.");
+                callback.onProgress(-1, "Estrazione della ROM…");
+                boolean extracted = false;
+                try {
+                    extracted = CookerEngine.extractDisc(disc.getAbsolutePath(),
+                            extractedDisc.getAbsolutePath(), includeMovies, callback) == 0;
+                } catch (LinkageError e) {
+                    callback.onLog("[Installer] Native extractor unavailable: " + e.getMessage());
+                }
+                if (!extracted) {
+                    callback.onLog("[Installer] Trying fallback disc extractor...");
+                    extracted = CookerEngine.extractWithNodtool(activity, disc.getAbsolutePath(),
+                            extractedDisc.getAbsolutePath(), includeMovies, callback);
+                }
+                if (!extracted) throw new IOException(errorOr(lastError, "Estrazione della ROM non riuscita."));
+                if (cachedDisc != null) {
+                    cachedDisc.delete();
+                    cachedDisc = null;
                 }
 
-                if (listener != null) listener.onProgress(-1, "Setting up converter engine...");
-                CookerEngine.prepareAssets(activity, new CookerEngine.CookerCallback() {
-                    @Override public void onLog(String line) {
-                        if (listener != null) listener.onLog(line);
-                    }
-                    @Override public void onProgress(int percent, String message) {}
-                    @Override public void onFinished(boolean success, String message) {}
-                });
-
+                lastError.set(null);
+                callback.onProgress(-1, "Preparazione del convertitore…");
+                CookerEngine.prepareAssets(activity, callback);
+                callback.onProgress(-1, "Preparazione dei dati del gioco…");
                 File filesDir = activity.getFilesDir();
-                File pythonHome = new File(filesDir, "pythonhome");
-                File scriptsDir = new File(filesDir, "scripts");
-
-                if (listener != null) listener.onProgress(-1, "Converting assets to little-endian ARM64...");
-                final File finalTempExtraction = tempExtractionDir;
-                int ret = CookerEngine.runCooker(
-                    pythonHome.getAbsolutePath(),
-                    scriptsDir.getAbsolutePath(),
-                    extractionDir.getAbsolutePath(),
-                    outputDir.getAbsolutePath(),
-                    includeMovies,
-                    new CookerEngine.CookerCallback() {
-                        @Override public void onLog(String line) {
-                            if (listener != null) listener.onLog(line);
-                        }
-                        @Override public void onProgress(int percent, String message) {
-                            if (listener != null) listener.onProgress(percent, message);
-                        }
-                        @Override public void onFinished(boolean success, String message) {
-                            if (finalTempExtraction != null && finalTempExtraction.exists()) {
-                                if (listener != null) listener.onLog("[Clean] Freeing temporary extraction cache...");
-                                CookerEngine.deleteRecursive(finalTempExtraction);
-                            }
-                            handler.post(() -> {
-                                if (listener != null) listener.onCompleted(success, message);
-                            });
-                        }
-                    }
-                );
-
-                if (ret != 0) {
-                    handler.post(() -> {
-                        if (listener != null) listener.onCompleted(false, "Converter returned code: " + ret);
-                    });
+                int result = CookerEngine.runCooker(
+                        new File(filesDir, "pythonhome").getAbsolutePath(),
+                        new File(filesDir, "scripts").getAbsolutePath(),
+                        extractedDisc.getAbsolutePath(), outputDir.getAbsolutePath(),
+                        includeMovies, callback);
+                if (result != 0) {
+                    throw new IOException(errorOr(lastError, "Il convertitore ha restituito il codice " + result + "."));
                 }
-
-            } catch (Exception e) {
-                Log.e(TAG, "Cooking failed with exception", e);
-                if (listener != null) listener.onLog("[ERROR] " + e.getMessage());
+                if (!GameDataLocator.hasConvertedAssets(outputDir)) {
+                    throw new IOException("I dati convertiti sono incompleti o non appartengono a Super Mario Galaxy.");
+                }
+                if (!pending.delete()) throw new IOException("Impossibile completare l’installazione.");
+                success = true;
+                resultMessage = "Gioco pronto.";
+            } catch (Exception | LinkageError error) {
+                Log.e(TAG, "Installation failed", error);
+                resultMessage = error.getMessage() == null ? error.toString() : error.getMessage();
+                callback.onLog("[ERROR] " + resultMessage);
+            } finally {
+                if (cachedDisc != null) CookerEngine.deleteRecursive(cachedDisc);
+                if (extractedDisc != null) CookerEngine.deleteRecursive(extractedDisc);
+                final boolean completed = success;
+                final String message = resultMessage;
                 handler.post(() -> {
-                    if (listener != null) listener.onCompleted(false, e.getMessage());
+                    if (listener != null) listener.onCompleted(completed, message);
                 });
             }
-        }).start();
+        }, "GalaxyInstall").start();
+    }
+
+    private static String errorOr(AtomicReference<String> error, String fallback) {
+        String detail = error.get();
+        return detail == null || detail.isEmpty() ? fallback : detail;
     }
 }

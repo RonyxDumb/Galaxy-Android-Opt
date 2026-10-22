@@ -133,7 +133,7 @@ def is_converted_kind(stats_before, stats_after):
 
 
 
-from cook_archive import cook_rarc, cook_archive, cook_dol_data
+from cook_archive import cook_rarc, cook_archive, cook_dol_data, process
 
 
 def plan(data_dir, out_dir, args):

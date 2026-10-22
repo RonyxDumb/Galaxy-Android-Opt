@@ -12,8 +12,17 @@ public final class GameDataLocator {
     private GameDataLocator() {}
 
     public static boolean checkDataDir(File dataDir) {
-        if (dataDir == null || !dataDir.exists()) return false;
+        if (dataDir == null || new File(dataDir, ".installing").exists()) return false;
+        if (!hasConvertedAssets(dataDir)) return false;
         File sentinel = new File(dataDir, ".installed_ok");
+        if (!sentinel.exists()) {
+            try { sentinel.createNewFile(); } catch (Exception ignored) {}
+        }
+        return true;
+    }
+
+    static boolean hasConvertedAssets(File dataDir) {
+        if (dataDir == null || !dataDir.exists()) return false;
         File fst = new File(dataDir, "sys/fst.bin");
         File files = new File(dataDir, "files");
         File coin = new File(dataDir, "files/ObjectData/Coin.arc");
@@ -23,9 +32,6 @@ public final class GameDataLocator {
         try (FileInputStream fis = new FileInputStream(coin)) {
             byte[] header = new byte[4];
             if (fis.read(header) == 4 && header[0] == 'C' && header[1] == 'R' && header[2] == 'A' && header[3] == 'R') {
-                if (!sentinel.exists()) {
-                    try { sentinel.createNewFile(); } catch (Exception ignored) {}
-                }
                 return true;
             }
         } catch (Exception ignored) {}

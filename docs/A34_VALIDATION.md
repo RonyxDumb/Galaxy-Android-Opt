@@ -249,3 +249,50 @@ white/black material defects. Existing installations retain their data and
 saves; the per-disc manifest is generated when the ROM is extracted again.
 
 APK SHA-256 (version code 17): `f1cdeb73eabc22cce37cd896c5d068465cce35d403eaf081231477893044f899`.
+
+## ROM installation correction — 0.0.4-a34.5
+
+The actual converter scripts shipped in a34.4 deterministically raise
+`NameError: name 'process' is not defined` when conversion reaches its worker
+loop. `cook.py` now imports that worker. Its module also imports `shutil` and
+`thp`, which its copy/movie paths use. These errors are reproduced without
+redistributing a game disc, using a synthetic RARC archive, text and THP movie.
+
+The Java task now completes from the synchronous JNI return value. The native
+bridge does not invoke `onFinished`; waiting for that callback left a successful
+conversion unfinished in the launcher. Every normal/error path reports one
+result and removes temporary extracted/cached disc files. A pending-install
+marker prevents partially written output from being accepted on next launch.
+Converted core files are checked before that marker is removed. Failure text
+retains the converter's diagnostic and is selectable on the setup screen.
+
+Material inventory is an optional cache optimization: scanner/write failures
+fall back to the existing runtime shader path, rather than invalidating valid
+converted data. Manifest writes use a temporary file and atomic replacement;
+a failed write preserves an earlier valid inventory. This does not suppress
+conversion failures or accept a missing/uncooked Coin archive.
+
+Validation: 13 focused tests pass, including seven executions of the production
+Java task with a synchronous fake JNI backend. They cover native success without
+a callback, document-URI caching, conversion/extraction/preparation/linkage
+failures, incomplete output, diagnostics and cleanup. Isolated Python tests
+exercise actual packaged converter modules, original-byte preservation,
+archive/copy/movie conversion and invalid-movie failure. The final APK's own
+scripts also pass the conversion probe in three modes.
+
+The available host suites report 144 passes and 9 skips (missing native/software
+Vulkan tooling or game fixtures); Java compilation/dexing, APK signature,
+alignment, payload and label checks pass. No renderer/input native sources were
+changed: all 15 ARM64 shared libraries are byte-identical to the validated a34.4
+APK. They were reused locally while Java/resources/scripts were repackaged.
+No physical A34 or user ROM is available, so a complete on-device extraction is
+still unverified.
+
+Version code 18 uses the separate tester ID
+`com.openport.galaxyandroid.a34test2`: the prior local signing key is unavailable
+after the workspace reset. It installs alongside a34test instead of replacing
+it, without requiring deletion of that app or its data. The ROM must be selected
+in the new copy. The new tester key is retained privately for future updates;
+APK and signing material are excluded from Git.
+
+APK SHA-256: `791e42525c01f60ad816be22b95f216125db00bf1e92f0be6b9f7c9ff3e7943a`.

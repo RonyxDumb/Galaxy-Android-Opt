@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from tools.tests import test_shape_attrs as fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,33 @@ MODULES = ('install_manifest.py', 'generate_shader_manifest.py', 'manifest_schem
 
 
 class InstallManifestTests(unittest.TestCase):
+    def test_missing_inventory_keeps_existing_manifest(self):
+        from tools.cook.install_manifest import prepare_graphics_manifest
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'files').mkdir()
+            manifest = root / 'galaxy_shader_manifest.bin'
+            manifest.write_bytes(b'previous valid inventory')
+            self.assertIsNone(prepare_graphics_manifest(tmp))
+            self.assertEqual(manifest.read_bytes(), b'previous valid inventory')
+
+    def test_inventory_write_failure_is_optional_and_atomic(self):
+        from tools.cook.install_manifest import prepare_graphics_manifest
+        from tools.cook import generate_shader_manifest as scanner
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / 'galaxy_shader_manifest.bin'
+            manifest.write_bytes(b'previous valid inventory')
+            def fail_write(materials, target):
+                Path(target).write_bytes(b'partial')
+                raise OSError('synthetic full disk')
+            with mock.patch.dict(sys.modules, {'generate_shader_manifest': scanner}), \
+                 mock.patch.object(scanner, 'scan_directory_for_models', return_value=([object()], {})), \
+                 mock.patch.object(scanner, 'write_manifest', side_effect=fail_write):
+                self.assertIsNone(prepare_graphics_manifest(tmp))
+            self.assertEqual(manifest.read_bytes(), b'previous valid inventory')
+            self.assertFalse(Path(str(manifest) + '.tmp').exists())
+
     def test_cooked_archives_prepare_their_own_inventory(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
