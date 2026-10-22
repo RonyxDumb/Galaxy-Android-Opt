@@ -19,6 +19,8 @@ public:
     // Triggers device hardware vibration via Android JNI
     static void triggerHaptic(android_app* app, int ms);
 
+    static void notifyFirstGameFrame(android_app* app);
+
     // Exits cleanly back to the Galaxy launcher activity via JNI
     static void returnToLauncher(android_app* app);
 

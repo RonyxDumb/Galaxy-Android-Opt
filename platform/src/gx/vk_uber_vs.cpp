@@ -12,7 +12,7 @@ uint U(uint base, uint word) {
 std::string genUberVertexShader(const ShaderUid& uid) {
     ShaderUid base{};
     base.vtxFlags = uid.vtxFlags;
-    base.numTexGens = 8;
+    base.numTexGens = uid.numTexGens;
     std::string src = genVulkanVertexShader(base);
     src.resize(src.find("  vec4 vclr0 ="));
     std::string helpers = kUberStateRead;
@@ -60,9 +60,20 @@ vec4 lightChannel(uint ctrl, vec4 vertex, vec4 material, vec4 ambient,
     o.w("  vec4 vertex0 = %s;\n", (uid.vtxFlags & VF_CLR0) ? "a_clr0" : "vec4(1.0)");
     o.w("  vec4 vertex1 = %s;\n", (uid.vtxFlags & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
     for (uint32_t c = 0; c < 2; c++) {
-        o.w("  v_clr%u = vec4(0.0);\n  if (U(ub, 2u) > %uu) {\n", c, c);
-        o.w("    v_clr%u.rgb = lightChannel(U(ub, %uu), vertex%u, matColor[%u], ambColor[%u], pos, nrm, lbase).rgb;\n", c, 4 + c, c, c, c);
-        o.w("    v_clr%u.a = lightChannel(U(ub, %uu), vertex%u, matColor[%u], ambColor[%u], pos, nrm, lbase).a;\n  }\n", c, 6 + c, c, c, c);
+        o.w("  v_clr%u = vec4(0.0);\n", c);
+        if (c >= uid.numChans) continue;
+        o.w("  {\n");
+        if (uid.colorCtrl[c]) {
+            o.w("    v_clr%u.rgb = lightChannel(U(ub, %uu), vertex%u, matColor[%u], ambColor[%u], pos, nrm, lbase).rgb;\n", c, 4 + c, c, c, c);
+        } else {
+            o.w("    v_clr%u.rgb = (U(ub, %uu) & 1u) != 0u ? vertex%u.rgb : matColor[%u].rgb;\n", c, 4 + c, c, c);
+        }
+        if (uid.alphaCtrl[c]) {
+            o.w("    v_clr%u.a = lightChannel(U(ub, %uu), vertex%u, matColor[%u], ambColor[%u], pos, nrm, lbase).a;\n", c, 6 + c, c, c, c);
+        } else {
+            o.w("    v_clr%u.a = (U(ub, %uu) & 1u) != 0u ? vertex%u.a : matColor[%u].a;\n", c, 6 + c, c, c);
+        }
+        o.w("  }\n");
     }
     o.w("  vec4 raw[13];\n  for (int i = 0; i < 13; i++) raw[i] = vec4(0.0, 0.0, 1.0, 1.0);\n");
     o.w("  raw[0] = vec4(a_pos, 1.0);\n");
@@ -71,11 +82,9 @@ vec4 lightChannel(uint ctrl, vec4 vertex, vec4 material, vec4 ambient,
     for (uint32_t t = 0; t < 8; t++) {
         if (uid.vtxFlags & (VF_TEX0 << t)) o.w("  raw[%u] = vec4(a_tex%u, 1.0, 1.0);\n", t + 5, t);
     }
+    o.w("  vec3 tc[8];\n  for (uint i = 0u; i < %uu; i++) {\n", uid.numTexGens);
     o.s += R"(
-  vec3 tc[8];
-  for (uint i = 0u; i < 8u; i++) {
     tc[i] = vec3(0.0, 0.0, 1.0);
-    if (i >= U(ub, 1u)) continue;
     uint info = U(ub, 8u + i), type = (info >> 4u) & 3u;
     if (type == 1u) {
         uint from = (info >> 12u) & 7u, l = (info >> 15u) & 7u;
@@ -112,7 +121,7 @@ vec4 lightChannel(uint ctrl, vec4 vertex, vec4 material, vec4 ambient,
     if ((U(ub, 98u) & (1u << i)) != 0u) tc[i] = vec3((c.xy / c.w) * 0.5 + 0.5, 1.0);
   }
 )";
-    for (uint32_t i = 0; i < 8; i++) o.w("  v_tex%u = tc[%u];\n", i, i);
+    for (uint32_t i = 0; i < uid.numTexGens; i++) o.w("  v_tex%u = tc[%u];\n", i, i);
     o.w("}\n");
     return o.s;
 }

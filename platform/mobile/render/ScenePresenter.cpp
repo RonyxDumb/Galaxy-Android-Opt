@@ -3,6 +3,7 @@
 #include <atomic>
 #include <unistd.h>
 #include "../ui/UIOverlay.h"
+#include "../system/SystemManager.h"
 #include "port/port.h"
 
 extern std::atomic<uint64_t> gPresentedFrames;
@@ -48,6 +49,11 @@ void ScenePresenter::presentVulkan(gpu::VkRenderer& vkr, gpu::VkTarget& target,
         const bool presented = vkr.present(target, vpMgr.x(), vpMgr.y(), vpMgr.w(), vpMgr.h());
         port_perf_present(port_host_time_ns() - presentStart);
         if (rendered && presented) {
+            static bool firstFrameNotified = false;
+            if (gameBooted && !firstFrameNotified) {
+                mobile_system::SystemManager::notifyFirstGameFrame(app);
+                firstFrameNotified = true;
+            }
             gPresentedFrames.store(vkr.frameNumber());
             ui.reportFramePresented();
             if (gameBooted) port_vi_retrace();

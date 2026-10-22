@@ -1,5 +1,5 @@
 import struct
-from util import u32, s16, sw32, sw16, sw_range, extents, swap_ntab
+from util import u16, u32, s16, sw32, sw16, sw_range, extents, swap_ntab
 from j3d import warn, swap_records
 def anm_tables(b, o, end, offs_at, kinds):
     """kinds: list of (kind) per u32 offset starting at o+offs_at."""

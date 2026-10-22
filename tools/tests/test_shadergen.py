@@ -92,6 +92,10 @@ class ShaderGeneratorTests(unittest.TestCase):
         result = subprocess.run([str(self.probe), '--state'], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_compact_families_omit_unused_depth_alpha_and_texgens(self):
+        result = subprocess.run([str(self.probe), '--families'], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_af_spec_attenuates_specular(self):
         """GX_AF_SPEC computes distance/specular attenuation."""
         src = self.shader(AF_SPEC)

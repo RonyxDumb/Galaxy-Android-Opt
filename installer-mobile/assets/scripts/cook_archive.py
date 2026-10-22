@@ -1,5 +1,7 @@
 import os
 import collections
+import shutil
+import thp
 import rarc_swap
 import collision
 import dol_data
@@ -78,7 +80,7 @@ def process(job):
         os.replace(dst + '.tmp', dst)
     except Exception as e:  # report and continue with the other files
         err_msg = '%s: %r' % (src, e)
-        print('[Cook Warning]', err_msg)
+        print('[Cook Warning] ' + err_msg)
         try:
             shutil.copyfile(src, dst)
             stats['copied-fallback'] += 1

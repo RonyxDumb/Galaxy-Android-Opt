@@ -214,8 +214,11 @@ def main():
 
         assets_dir = os.path.join(INSTALLER_DIR, "assets")
         if os.path.isdir(assets_dir):
-            for root, _, files in os.walk(assets_dir):
-                for file in files:
+            for root, directories, files in os.walk(assets_dir):
+                directories[:] = [name for name in directories if name != "__pycache__"]
+                for file in sorted(files):
+                    if file.endswith((".pyc", ".pyo")):
+                        continue
                     p = os.path.join(root, file)
                     add_file(p, os.path.relpath(p, INSTALLER_DIR))
 

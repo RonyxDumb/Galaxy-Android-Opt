@@ -161,9 +161,9 @@ void ShaderInventory::compileAllSpirv(int maxWorkers, std::function<void(int don
         for (const auto& kv : mUidIndex) uniqueUids.push_back(kv.first);
     }
 
-    std::unordered_set<uint32_t> layouts;
-    for (const auto& uid : uniqueUids) layouts.insert(uid.vtxFlags);
-    for (uint32_t flags : layouts) uniqueUids.push_back(uberShaderUid(flags));
+    std::unordered_set<ShaderUid, ShaderUidHash> families;
+    for (const auto& uid : uniqueUids) families.insert(uberShaderUid(uid));
+    for (const auto& uid : families) uniqueUids.push_back(uid);
     const int total = (int)uniqueUids.size();
     if (total == 0) return;
 
@@ -258,13 +258,7 @@ void ShaderInventory::prewarmPipelines(VkRenderer& renderer, std::function<void(
 
 bool ShaderInventory::verifyStartupReadiness() const {
     std::lock_guard<std::mutex> lock(mMutex);
-    size_t readyCount = 0;
-    for (const auto& e : mEntries) {
-        if (e.pipelineReady) readyCount++;
-        bool isEssential = (e.sourceAsset == "placeholder_stub" || e.sourceAsset == "title_screen_and_ui");
-        if (isEssential && (!e.spirvReady || !e.pipelineReady)) return false;
-    }
-    return readyCount > 0;
+    return mStartupReady;
 }
 
 bool ShaderInventory::hasUid(const ShaderUid& uid) const {

@@ -163,8 +163,8 @@ void MobileApp::updateInputState() {
 
 void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
     mobile_system::SystemManager::installCrashHandlers();
-    mobile_system::SystemManager::elevateThreadPriority(-10);
-    mobile_system::SystemManager::pinThreadToPerformanceCores();
+    // Let Android distribute game/render work across cores. Child compiler
+    // threads must not inherit a high priority and a big-core-only affinity.
 
     mAndroid = app;
     app->userData = this;

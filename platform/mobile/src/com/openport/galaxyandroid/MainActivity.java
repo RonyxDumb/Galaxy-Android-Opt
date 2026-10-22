@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
             @Override public void onLog(String line) { Log.i("GalaxyInstall", line); }
             @Override public void onProgress(int percent, String message) {
                 handler.post(() -> {
+                    if (message != null && !message.isEmpty()) status.setText(message);
                     progress.setIndeterminate(percent < 0);
                     if (percent >= 0) progress.setProgress(percent);
                 });
@@ -79,7 +80,9 @@ public class MainActivity extends Activity {
                     progress.setVisibility(View.GONE);
                     if (success && isGameDataReady(MainActivity.this)) launchGame();
                     else {
-                        status.setText(R.string.status_error);
+                        status.setText(message == null || message.isEmpty()
+                                ? getString(R.string.status_error)
+                                : getString(R.string.status_error_detail, message));
                         Log.e("GalaxyInstall", message == null ? "Installation failed" : message);
                     }
                 });

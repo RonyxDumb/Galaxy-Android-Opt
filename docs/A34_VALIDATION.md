@@ -249,3 +249,152 @@ white/black material defects. Existing installations retain their data and
 saves; the per-disc manifest is generated when the ROM is extracted again.
 
 APK SHA-256 (version code 17): `f1cdeb73eabc22cce37cd896c5d068465cce35d403eaf081231477893044f899`.
+
+## ROM installation correction — 0.0.4-a34.5
+
+The actual converter scripts shipped in a34.4 deterministically raise
+`NameError: name 'process' is not defined` when conversion reaches its worker
+loop. `cook.py` now imports that worker. Its module also imports `shutil` and
+`thp`, which its copy/movie paths use. These errors are reproduced without
+redistributing a game disc, using a synthetic RARC archive, text and THP movie.
+
+The Java task now completes from the synchronous JNI return value. The native
+bridge does not invoke `onFinished`; waiting for that callback left a successful
+conversion unfinished in the launcher. Every normal/error path reports one
+result and removes temporary extracted/cached disc files. A pending-install
+marker prevents partially written output from being accepted on next launch.
+Converted core files are checked before that marker is removed. Failure text
+retains the converter's diagnostic and is selectable on the setup screen.
+
+Material inventory is an optional cache optimization: scanner/write failures
+fall back to the existing runtime shader path, rather than invalidating valid
+converted data. Manifest writes use a temporary file and atomic replacement;
+a failed write preserves an earlier valid inventory. This does not suppress
+conversion failures or accept a missing/uncooked Coin archive.
+
+Validation: 13 focused tests pass, including seven executions of the production
+Java task with a synchronous fake JNI backend. They cover native success without
+a callback, document-URI caching, conversion/extraction/preparation/linkage
+failures, incomplete output, diagnostics and cleanup. Isolated Python tests
+exercise actual packaged converter modules, original-byte preservation,
+archive/copy/movie conversion and invalid-movie failure. The final APK's own
+scripts also pass the conversion probe in three modes.
+
+The available host suites report 144 passes and 9 skips (missing native/software
+Vulkan tooling or game fixtures); Java compilation/dexing, APK signature,
+alignment, payload and label checks pass. No renderer/input native sources were
+changed: all 15 ARM64 shared libraries are byte-identical to the validated a34.4
+APK. They were reused locally while Java/resources/scripts were repackaged.
+No physical A34 or user ROM is available, so a complete on-device extraction is
+still unverified.
+
+Version code 18 uses the separate tester ID
+`com.openport.galaxyandroid.a34test2`: the prior local signing key is unavailable
+after the workspace reset. It installs alongside a34test instead of replacing
+it, without requiring deletion of that app or its data. The ROM must be selected
+in the new copy. The new tester key is retained privately for future updates;
+APK and signing material are excluded from Git.
+
+APK SHA-256: `791e42525c01f60ad816be22b95f216125db00bf1e92f0be6b9f7c9ff3e7943a`.
+
+## Sound-animation conversion correction — 0.0.4-a34.6
+
+The new screenshot establishes a nonzero conversion result, not which asset
+failed. A separate before/after reproduction with the actual a34.5 APK scripts
+shows that a RARC containing a `.bas` audio animation fails with code 1:
+`j3d.swap_sound_anim` was not exported. Embedded sound records in BCK animations
+also need the missing `u16` import in `j3d_anim`. Both are now available. A scan
+of all 19 bundled Python modules also identified missing `f32`/`normalize`
+imports in the collision builder; these imports are fixed without enabling
+the disabled model-to-collision replacement option.
+
+Worker and system-data errors now print each diagnostic as one complete write.
+The JNI output logger previously split print's separate arguments into separate
+messages. Java preserves the first specific failure when the bridge later logs
+its generic `cook.convert returned non-zero code` exception. Failed conversion
+still fails installation; its error is not suppressed to make setup appear ready.
+
+The converter integration fixture no longer mocks out `cook_dol_data`. It
+creates an original synthetic DOL containing a hierarchical error-message RARC
+and both required BCSV tables, plus a game archive containing standalone BAS
+records and BCK animations with embedded audio. Assertions check the actual
+little-endian tables and sound-record bytes, original-input preservation and
+clear rejection of a missing system table or invalid movie. The input fails
+with the previous APK scripts and succeeds with the corrected ones.
+
+Validation: 18 focused tests pass. The full available tools suite reports 79
+passes and 8 skips for unavailable native/software-Vulkan tooling or game
+fixtures. All 19 bundled Python modules pass an undefined-name scan. The final
+APK's extracted scripts pass the complete conversion fixture in four modes,
+including both failure cases. Java/dex, APK signature, identity, label and
+alignment checks pass. All 15 ARM64 native libraries remain byte-identical to
+a34.5. The user ROM and full physical-device extraction are still unavailable.
+
+Version code 19 retains `com.openport.galaxyandroid.a34test2` and the a34.5
+certificate, so this installs as an update to that second tester app without
+uninstalling it. APK and signing key remain outside Git.
+
+APK SHA-256: `0a7d513286176737746ef82ef3851567f0de64d37b96a757ddbd603c402fdb92`.
+
+## Low-end startup and rendering pass — 0.0.4-a34.7
+
+The user reports successful ROM extraction, followed by severe phone-wide lag,
+a long black startup and the still-visible sun/glow defect. This pass addresses
+specific costs and rendering errors found in code; it is not an on-device
+performance certification.
+
+- Android no longer compiles the entire extracted material inventory before
+  processing its first window, nor creates every exact pipeline at launch.
+  Startup prepares at most 12 complete generic pipelines, starting with title/UI
+  states and a bounded sample of previously observed runtime states. A native
+  probe checks that adding 5,000 future materials does not increase this budget.
+- Render/game threads no longer use a big-core-only affinity or priority -10.
+  The single specialization worker uses Android nice 10. Android can distribute
+  work while retaining CPU time for system UI and other foreground work.
+- Generic shaders retain only the material's texgen/channel/stage counts,
+  texture-unit mask, lighting enables, alpha-test requirement and Z-texture
+  requirement. TEV operations, matrices and other actual material data still
+  come from the original draw record. No flat-colour replacement is used.
+- Ordinary opaque shaders no longer statically write fragment depth or discard.
+  Specialized shaders also respect GX_ZT_DISABLE when nonzero format bits
+  remain set. Active Z-texture operations are preserved.
+- Half-resolution EFB texture copies now clear the entire source rectangle.
+  Previously the downsampled destination dimensions were reused for the clear,
+  leaving source pixels behind in effect passes. The production copy dispatcher
+  is tested for normal, half-sized, clipped/scaled and no-clear copies.
+- The compiled SPIR-V payload cache is limited to 32 MiB. Cache version 3
+  discards the bulk-warmed v2 cache on upgrade. Overflow programs remain usable
+  for the current pipeline without growing the resident/disk payload.
+- The unused extra presentation FXAA/bloom/saturation pipeline is removed.
+  Game-authored Wii effects remain. A simple startup indicator is dismissed
+  after the first successfully presented game frame.
+- The native resolution, original assets, game speed/FPS, camera mapping,
+  fixed joystick and touch star pointer profile are retained.
+
+Validation:
+
+- Complete ARM64 Release build with Android NDK r25c, CMake 3.31.6 and Ninja.
+  All game, launcher, reservation and installer targets link.
+- 110 discovered Python/native tests: 101 pass, 9 initially skip. Re-running
+  the 7 installer-task probes with JDK 17 passes all 7; the remaining 2 skips
+  require untracked original/cooked game assets. All 20 numerical Vulkan tests
+  pass using Mesa lavapipe, including 32 multi-stage material permutations
+  compared against both specialized and compact generic shader paths.
+- Focused graphics tests pass again after the final title/UI seed adjustment.
+  They exercise actual production queue/inventory/cache/copy code with fake
+  Android/driver services; cache tests use deterministic fake compiler output.
+- Java sources compile against Android API 34. APK signature verification
+  succeeds; version code 20, package com.openport.galaxyandroid.a34test2 and
+  signer match the existing a34.5/a34.6 installation.
+- The packaged native payload matches the freshly built stripped libraries.
+  Packaged installer assets are byte-identical to a34.6. LOC and include-case
+  checks pass; APKs, ROM data and signing keys are excluded from GitHub.
+
+Limits: no physical phone, game ROM or device trace is available here.
+First use of an unseen generic/raster state can still require driver pipeline
+creation on the render thread; this does not establish zero shader stutter.
+The EFB clear and disabled-Z fixes address proven errors, but the exact reported
+sun artifact and sustained low-end FPS still require a device comparison.
+The startup indicator/JNI handoff is compiled, not instrumented on Android.
+
+APK SHA-256: `fab17ea2ebbce2316c137b841d6e5f41815882bde109a41dcb86c032ed18e4f0`.

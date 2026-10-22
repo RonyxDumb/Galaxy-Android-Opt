@@ -85,7 +85,12 @@ public:
     // Stage B: Prewarm graphics pipelines with active Vulkan device and render pass
     void prewarmPipelines(VkRenderer& renderer, std::function<void(int done, int total, const char* msg)> progress = nullptr);
 
-    // Startup readiness verification (ensures title screen and essential stubs are prewarmed)
+    // Mobile startup is deliberately independent of the whole disc's size.
+    static constexpr size_t kStartupPipelineBudget = 12;
+    std::vector<PipelineKey> startupPipelineKeys() const;
+    void prewarmStartupPipelines(VkRenderer& renderer);
+
+    // Reports bounded startup preparation, not full-game prewarm coverage.
     bool verifyStartupReadiness() const;
 
     // Query stats and diagnostics
@@ -136,6 +141,7 @@ private:
     bool mCanonicalPopulated = false;
     bool mSpirvWarmed = false;
     bool mPipelinesWarmed = false;
+    bool mStartupReady = false;
 };
 
 }  // namespace gpu

@@ -121,9 +121,7 @@ bool VkRenderer::present(const VkTarget& target, int vpX, int vpY, int vpW, int 
         vkCmdSetScissor(mPresentCommandBuffer, 0, 1, &scissor);
 
         VkPipeline chosenPipe = mPresentPipeline;
-        if (port_is_post_processing_enabled() && mPresentPipelinePostProcess != VK_NULL_HANDLE) {
-            chosenPipe = mPresentPipelinePostProcess;
-        }
+
         vkCmdBindPipeline(mPresentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, chosenPipe);
         vkCmdBindDescriptorSets(mPresentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPresentPipelineLayout, 0, 1, &presentSet, 0, nullptr);
         vkCmdDraw(mPresentCommandBuffer, 3, 1, 0, 0);

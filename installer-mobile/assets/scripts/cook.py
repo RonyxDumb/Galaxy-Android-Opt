@@ -133,7 +133,7 @@ def is_converted_kind(stats_before, stats_after):
 
 
 
-from cook_archive import cook_rarc, cook_archive, cook_dol_data
+from cook_archive import cook_rarc, cook_archive, cook_dol_data, process
 
 
 def plan(data_dir, out_dir, args):
@@ -230,7 +230,7 @@ def convert(data_dir, out_dir, jobs=None, only=None, no_audio=False,
     if errors:
         print('[Engine] Conversion failed with %d error(s):' % len(errors))
         for e in errors[:20]:
-            print('  [Error]', e)
+            print('  [Error] ' + str(e))
         return 1
     # Fail closed: whatever is left in out_dir gets installed, so never report
     # success without the core converted output present.

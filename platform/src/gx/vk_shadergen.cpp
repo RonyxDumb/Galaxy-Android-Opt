@@ -33,9 +33,10 @@ shaderc_optimization_level optimizationLevel() {
     return level;
 }
 
-constexpr uint32_t kSpirvCacheVersion = 2;
+constexpr uint32_t kSpirvCacheVersion = 3;
 constexpr char kSpirvCacheMagic[4] = {'P', 'T', 'S', 'V'};
-constexpr uint32_t kSpirvCacheMaxBytes = 64u << 20;
+constexpr uint32_t kSpirvCacheMaxBytes = 4u << 20;
+constexpr size_t kSpirvCacheBudget = 32u << 20;
 
 struct SpirvPair {
     std::vector<uint32_t> vs;
@@ -48,6 +49,7 @@ std::unordered_map<uint64_t, SpirvPair> sSpirvCache;
 std::unordered_map<ShaderUid, uint64_t, ShaderUidHash> sUidKeys;
 bool sSpirvCacheLoaded = false;
 bool sSpirvCacheHeaderWritten = false;
+size_t sSpirvCacheBytes = 0;
 
 uint64_t fnv1a64(const void* data, size_t len, uint64_t h) {
     const uint8_t* p = (const uint8_t*)data;
@@ -117,6 +119,10 @@ void loadSpirvCacheLocked() {
             break;
         }
         SpirvPair pair;
+        if (sSpirvCacheBytes + vsBytes + fsBytes > kSpirvCacheBudget) {
+            hadTruncation = true;
+            break;
+        }
         pair.vs.resize(vsBytes / 4);
         pair.fs.resize(fsBytes / 4);
         if (fread(pair.vs.data(), 1, vsBytes, f) != vsBytes || fread(pair.fs.data(), 1, fsBytes, f) != fsBytes) {
@@ -127,6 +133,9 @@ void loadSpirvCacheLocked() {
             hadTruncation = true;
             continue;
         }
+        auto old = sSpirvCache.find(key);
+        if (old != sSpirvCache.end()) sSpirvCacheBytes -= (old->second.vs.size() + old->second.fs.size()) * 4;
+        sSpirvCacheBytes += vsBytes + fsBytes;
         sSpirvCache[key] = std::move(pair);
         lastValidPos = ftell(f);
     }
@@ -152,6 +161,9 @@ void loadSpirvCacheLocked() {
 }
 
 void storeSpirvCacheLocked(uint64_t key, const std::vector<uint32_t>& vs, const std::vector<uint32_t>& fs) {
+    const size_t bytes = (vs.size() + fs.size()) * 4;
+    if (sSpirvCache.count(key) || sSpirvCacheBytes + bytes > kSpirvCacheBudget) return;
+    sSpirvCacheBytes += bytes;
     sSpirvCache[key] = SpirvPair{vs, fs};
     if (sSpirvCachePath.empty()) return;
 
@@ -261,6 +273,7 @@ void setVulkanShaderCachePath(const char* path) {
     sSpirvCacheLoaded = false;
     sSpirvCacheHeaderWritten = false;
     sSpirvCache.clear();
+    sSpirvCacheBytes = 0;
     sUidKeys.clear();
 }
 
