@@ -71,7 +71,12 @@ public class CookerEngine {
    write(new File(output,"sys/fst.bin"),new byte[]{1});
    if(!mode.equals("incomplete")) write(new File(output,"files/ObjectData/Coin.arc"),new byte[]{'C','R','A','R'});
   } catch(IOException e) { throw new RuntimeException(e); }
-  if(mode.equals("conversion_error")) { cb.onLog("[ERROR] Synthetic conversion failure"); return 1; }
+  if(mode.equals("conversion_error")) {
+   cb.onLog("[Cook Warning] wait.bas: Synthetic conversion failure");
+   cb.onLog("[ERROR] cook.convert returned non-zero code 1");
+   cb.onLog("RuntimeError: cook.convert returned non-zero code 1");
+   return 1;
+  }
   return 0; // Deliberately does not call onFinished, matching the real JNI.
  }
  public static void deleteRecursive(File target) {

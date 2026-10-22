@@ -237,7 +237,7 @@ def swap_model(b):
 # ---------------------------------------------------------------------------
 # Animations
 # ---------------------------------------------------------------------------
-from j3d_anim import swap_anim
+from j3d_anim import swap_anim, swap_sound_anim
 
 def is_model(b):
     return len(b) >= 0x20 and bytes(b[0:4]) in (b'J3D2',)

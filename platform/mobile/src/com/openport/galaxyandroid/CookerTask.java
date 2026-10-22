@@ -33,9 +33,15 @@ public final class CookerTask {
             AtomicReference<String> lastError = new AtomicReference<>();
             CookerEngine.CookerCallback callback = new CookerEngine.CookerCallback() {
                 @Override public void onLog(String line) {
-                    if (line != null && (line.startsWith("[ERROR]") || line.startsWith("[Error]")
-                            || line.startsWith("[Python Error]") || line.startsWith("[Cook Warning]")
-                            || line.contains("Error:"))) lastError.set(line);
+                    String detail = line == null ? "" : line.trim();
+                    if (detail.startsWith("[ERROR]") || detail.startsWith("[Error]")
+                            || detail.startsWith("[Python Error]") || detail.startsWith("[Cook Warning]")
+                            || detail.contains("Error:")) {
+                        // Keep the first concrete failure; the JNI wrapper prints
+                        // its generic return-code exception afterwards.
+                        lastError.updateAndGet(previous -> previous == null || isGenericError(previous)
+                                ? detail : previous);
+                    }
                     if (listener != null) listener.onLog(line);
                 }
                 @Override public void onProgress(int percent, String message) {
@@ -150,5 +156,9 @@ public final class CookerTask {
     private static String errorOr(AtomicReference<String> error, String fallback) {
         String detail = error.get();
         return detail == null || detail.isEmpty() ? fallback : detail;
+    }
+
+    private static boolean isGenericError(String error) {
+        return error.contains("cook.convert returned non-zero code");
     }
 }

@@ -296,3 +296,42 @@ in the new copy. The new tester key is retained privately for future updates;
 APK and signing material are excluded from Git.
 
 APK SHA-256: `791e42525c01f60ad816be22b95f216125db00bf1e92f0be6b9f7c9ff3e7943a`.
+
+## Sound-animation conversion correction — 0.0.4-a34.6
+
+The new screenshot establishes a nonzero conversion result, not which asset
+failed. A separate before/after reproduction with the actual a34.5 APK scripts
+shows that a RARC containing a `.bas` audio animation fails with code 1:
+`j3d.swap_sound_anim` was not exported. Embedded sound records in BCK animations
+also need the missing `u16` import in `j3d_anim`. Both are now available. A scan
+of all 19 bundled Python modules also identified missing `f32`/`normalize`
+imports in the collision builder; these imports are fixed without enabling
+the disabled model-to-collision replacement option.
+
+Worker and system-data errors now print each diagnostic as one complete write.
+The JNI output logger previously split print's separate arguments into separate
+messages. Java preserves the first specific failure when the bridge later logs
+its generic `cook.convert returned non-zero code` exception. Failed conversion
+still fails installation; its error is not suppressed to make setup appear ready.
+
+The converter integration fixture no longer mocks out `cook_dol_data`. It
+creates an original synthetic DOL containing a hierarchical error-message RARC
+and both required BCSV tables, plus a game archive containing standalone BAS
+records and BCK animations with embedded audio. Assertions check the actual
+little-endian tables and sound-record bytes, original-input preservation and
+clear rejection of a missing system table or invalid movie. The input fails
+with the previous APK scripts and succeeds with the corrected ones.
+
+Validation: 18 focused tests pass. The full available tools suite reports 79
+passes and 8 skips for unavailable native/software-Vulkan tooling or game
+fixtures. All 19 bundled Python modules pass an undefined-name scan. The final
+APK's extracted scripts pass the complete conversion fixture in four modes,
+including both failure cases. Java/dex, APK signature, identity, label and
+alignment checks pass. All 15 ARM64 native libraries remain byte-identical to
+a34.5. The user ROM and full physical-device extraction are still unavailable.
+
+Version code 19 retains `com.openport.galaxyandroid.a34test2` and the a34.5
+certificate, so this installs as an update to that second tester app without
+uninstalling it. APK and signing key remain outside Git.
+
+APK SHA-256: `0a7d513286176737746ef82ef3851567f0de64d37b96a757ddbd603c402fdb92`.
