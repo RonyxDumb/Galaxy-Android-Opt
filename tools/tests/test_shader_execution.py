@@ -166,6 +166,13 @@ class ShaderExecutionTests(unittest.TestCase):
                     uid.indCmd[s] = (1 << 9) | (3 << 7)
                 self.harness.execute(*args, stage='fs', attrs={'v_gxz': '0.25'})
 
+    def test_disabled_z_texture_preserves_depth_with_each_format(self):
+        for format_bits in range(3):
+            args = execution.fixture()
+            args[0].zTex = format_bits
+            out = self.harness.execute(*args, stage='fs')
+            self.assertEqual(out[10][0], 0.25)
+
     def test_indirect_bump_channels_are_not_vertex_colors(self):
         for channel, expected in ((5, 128), (6, 132)):
             args = execution.fixture()

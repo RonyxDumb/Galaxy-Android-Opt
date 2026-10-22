@@ -21,8 +21,7 @@ bool VulkanLifecycle::bringUp(ANativeWindow* window, int& screenW, int& screenH,
     if (!window) return false;
     if (!gpu::VkRenderer::get().init(window)) return false;
 
-    // Stage B: Prewarm graphics pipelines before gameplay commences
-    gpu::ShaderInventory::get().prewarmPipelines(gpu::VkRenderer::get());
+    gpu::ShaderInventory::get().prewarmStartupPipelines(gpu::VkRenderer::get());
 
     // Verify startup readiness before permitting gameplay
     if (!gpu::ShaderInventory::get().verifyStartupReadiness()) {
@@ -87,8 +86,8 @@ void VulkanLifecycle::initCaches(const std::string& internalPath, const std::str
     gpu::setVkPipelineCachePath((internalPath + "/vk_pipeline_cache.bin").c_str());
     gpu::setVulkanShaderCachePath((internalPath + "/vk_shaders.bin").c_str());
     gpu::ShaderInventory::get().init(internalPath, dataRoot);
-    // Stage A: Compile missing SPIR-V shaders before device bringup with bounded workers (4 threads)
-    gpu::ShaderInventory::get().compileAllSpirv(4);
+    // Metadata only: compiling the entire disc here blocks window creation and
+    // can overwhelm small phones before they display their first frame.
 }
 
 }  // namespace mobile_render

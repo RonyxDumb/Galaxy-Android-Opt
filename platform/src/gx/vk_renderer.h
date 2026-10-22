@@ -204,7 +204,6 @@ public:
   VkDescriptorSetLayout mPresentDescLayout = VK_NULL_HANDLE;
   VkPipelineLayout mPresentPipelineLayout = VK_NULL_HANDLE;
   VkPipeline mPresentPipeline = VK_NULL_HANDLE;
-  VkPipeline mPresentPipelinePostProcess = VK_NULL_HANDLE;
   VkSampler mPresentSampler = VK_NULL_HANDLE;
   std::unordered_map<VkImageView, VkDescriptorSet> mPresentDescSets;
 

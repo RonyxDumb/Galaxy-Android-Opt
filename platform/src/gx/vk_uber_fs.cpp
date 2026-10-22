@@ -3,24 +3,27 @@
 
 namespace gpu {
 
-std::string genUberFragmentShader() {
+std::string genUberFragmentShader(const ShaderUid& uid) {
     VulkanShaderGenOut o;
     o.s = "#version 450\n";
     o.s += kVulkanUniformBlocksFs;
     o.s += kUberStateRead;
-    for (int t = 0; t < 8; t++) o.w("layout(set = 1, binding = %d) uniform sampler2D s_tex%d;\n", t, t);
+    for (int t = 0; t < 8; t++) {
+        if (uid.iref & (1u << t)) o.w("layout(set = 1, binding = %d) uniform sampler2D s_tex%d;\n", t, t);
+    }
     o.w("layout(location = 0) flat in uint v_pix;\nlayout(location = 1) in vec4 v_clr0;\nlayout(location = 2) in vec4 v_clr1;\n");
-    for (int t = 0; t < 8; t++) o.w("layout(location = %d) in vec3 v_tex%d;\n", t + 3, t);
+    for (uint32_t t = 0; t < uid.numTexGens; t++) o.w("layout(location = %u) in vec3 v_tex%u;\n", t + 3, t);
+    o.w("layout(location = %u) in float v_viewz;\nlayout(location = %u) in float v_gxz;\n", uid.numTexGens + 3, uid.numTexGens + 4);
     o.s += R"(
-layout(location = 11) in float v_viewz;
-layout(location = 12) in float v_gxz;
 layout(location = 13) flat in uint v_uid;
 layout(location = 0) out vec4 o_color;
 vec3 tc(uint i) {
 )";
-    for (int t = 0; t < 8; t++) o.w("  if (i == %du) return v_tex%d;\n", t, t);
+    for (uint32_t t = 0; t < uid.numTexGens; t++) o.w("  if (i == %uu) return v_tex%u;\n", t, t);
     o.s += "  return vec3(0.0, 0.0, 1.0);\n}\nvec4 sampleUnit(uint i, vec2 uv) {\n";
-    for (int t = 0; t < 8; t++) o.w("  if (i == %du) return texture(s_tex%d, uv);\n", t, t);
+    for (int t = 0; t < 8; t++) {
+        if (uid.iref & (1u << t)) o.w("  if (i == %du) return texture(s_tex%d, uv);\n", t, t);
+    }
     o.s += R"(
   return vec4(0.0);
 }
@@ -90,10 +93,10 @@ void main() {
     vec4 texSize[8];
     for (uint i = 0u; i < 8u; i++) texSize[i] = fetch_st(v_pix + 12u + i);
     vec3 ind[4];
-    uint ni = min(U(v_uid, 25u), 4u), ng = min(U(v_uid, 1u), 8u);
-    for (uint i = 0u; i < 4u; i++) {
+)";
+    o.w("    const uint ni = %uu, ng = %uu;\n    for (uint i = 0u; i < ni; i++) {\n", uid.numIndStages, uid.numTexGens);
+    o.s += R"(
         ind[i] = vec3(0.0);
-        if (i >= ni) continue;
         uint ref = U(v_uid, 92u) >> (i * 6u), coord = (ref >> 3u) & 7u;
         uint sc = U(v_uid, 93u + i / 2u) >> ((i & 1u) * 8u);
         if (coord < ng) ind[i] = floor(sampleUnit(ref & 7u, projectUv(tc(coord)) / exp2(vec2(sc & 15u, (sc >> 4u) & 15u))).abg * 255.0 + 0.5);
@@ -102,7 +105,9 @@ void main() {
     uint lastC = 0u, lastA = 0u;
     ivec4 ztex = ivec4(0);
     int bump = 0;
-    for (uint s = 0u; s < min(U(v_uid, 24u), 16u); s++) {
+)";
+    o.w("    for (uint s = 0u; s < %uu; s++) {\n", uid.numTevStages);
+    o.s += R"(
         uint order = U(v_uid, 26u + s / 2u) >> ((s & 1u) * 12u);
         uint map = order & 7u, coord = (order >> 3u) & 7u, chan = (order >> 7u) & 7u;
         uint cc = U(v_uid, 34u + s), ac = U(v_uid, 50u + s), cmd = U(v_uid, 76u + s);
@@ -148,18 +153,26 @@ void main() {
     }
     ivec4 result = ivec4(r[lastC].rgb, r[lastA].a) & 255;
     vec4 refs = fetch_st(v_pix + 8u);
+)";
+    if (uid.alphaFunc) o.s += R"(
     uint test = U(v_uid, 74u), logic = (test >> 6u) & 3u;
     bool a0 = alphaTest(test & 7u, result.a, int(refs.x)), a1 = alphaTest((test >> 3u) & 7u, result.a, int(refs.y));
     bool pass = logic == 0u ? a0 && a1 : logic == 1u ? a0 || a1 : logic == 2u ? a0 != a1 : a0 == a1;
     if (!pass) discard;
-    vec4 outc = vec4(result) / 255.0;
+)";
+    o.s += "    vec4 outc = vec4(result) / 255.0;\n";
+    // Merely declaring a depth write can disable early depth rejection on tile
+    // GPUs. Ordinary GX materials must not statically write gl_FragDepth.
+    if (uid.zTex) o.s += R"(
     uint z = U(v_uid, 96u), ztype = z & 3u, zop = (z >> 2u) & 3u;
     if (zop != 0u) {
         int value = ztype == 0u ? ztex.a : ztype == 1u ? ztex.r + ztex.a * 256 : ztex.r * 65536 + ztex.g * 256 + ztex.b;
         value += int(refs.z);
         if (zop == 1u) value += int(gl_FragCoord.z * 16777215.0 + 0.5);
         gl_FragDepth = float(value & 0xffffff) / 16777215.0;
-    } else gl_FragDepth = gl_FragCoord.z;
+    }
+)";
+    o.s += R"(
     uint fog = U(v_uid, 75u), ftype = (fog >> 1u) & 7u;
     if (ftype >= 2u) {
         vec4 fp = fetch_st(v_pix + 10u);

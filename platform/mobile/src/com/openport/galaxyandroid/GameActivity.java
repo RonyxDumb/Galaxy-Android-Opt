@@ -4,6 +4,11 @@ import android.app.NativeActivity;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Gravity;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.view.WindowManager;
 import android.content.Context;
 import android.content.Intent;
@@ -11,10 +16,13 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 
 public class GameActivity extends NativeActivity {
-    private static GameActivity sInstance;
+    private static volatile GameActivity sInstance;
+    private static volatile boolean gameFramePresented;
+    private View startupView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        gameFramePresented = false;
         super.onCreate(savedInstanceState);
         sInstance = this;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
@@ -27,6 +35,39 @@ public class GameActivity extends NativeActivity {
         }
 
         CookerEngine.extractShaderManifestIfPresent(this);
+        showStartup();
+    }
+
+    private void showStartup() {
+        if (gameFramePresented) return;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER);
+        panel.setBackgroundColor(0xff08090d);
+        panel.setClickable(true);
+        panel.addView(new ProgressBar(this));
+        TextView text = new TextView(this);
+        text.setText(R.string.game_starting);
+        text.setTextColor(0xfff4f4f4);
+        text.setTextSize(20);
+        text.setPadding(24, 24, 24, 24);
+        panel.addView(text);
+        startupView = panel;
+        addContentView(panel, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    // Called after a game frame was actually submitted to the display.
+    public static void onGameFramePresented() {
+        gameFramePresented = true;
+        GameActivity activity = sInstance;
+        if (activity != null) activity.runOnUiThread(() -> {
+            if (activity.startupView != null) {
+                ViewGroup parent = (ViewGroup) activity.startupView.getParent();
+                if (parent != null) parent.removeView(activity.startupView);
+                activity.startupView = null;
+            }
+        });
     }
 
     public static void setPreferredRefreshRate(float maxFps) {

@@ -4,7 +4,9 @@
 
 namespace gpu {
 inline PipelineKey uberPipelineKey(PipelineKey key) {
-    key.uid = uberShaderUid(key.flags);
+    ShaderUid material = key.uid;
+    material.vtxFlags = key.flags;
+    key.uid = uberShaderUid(material);
     return key;
 }
 }  // namespace gpu

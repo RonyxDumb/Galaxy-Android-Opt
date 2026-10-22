@@ -4,7 +4,7 @@
 namespace gpu {
 
 std::string genVulkanFragmentShader(const ShaderUid& u) {
-    if (isUberShader(u)) return genUberFragmentShader();
+    if (isUberShader(u)) return genUberFragmentShader(u);
     VulkanShaderGenOut o;
     o.w("#version 450\n");
     o.s += kVulkanUniformBlocksFs;
@@ -47,7 +47,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
     o.w("  ivec4 tex = ivec4(0);\n  ivec4 ras = ivec4(0);\n  ivec3 kc = ivec3(0);\n  int ka = 0;\n");
     o.w("  ivec4 tevin_a, tevin_b, tevin_c, tevin_d;\n");
     o.w("  const ivec3 comp16 = ivec3(1, 256, 0);\n  const ivec3 comp24 = ivec3(1, 256, 65536);\n");
-    if (u.zTex) {
+    if ((u.zTex >> 2) & 3) {
         o.w("  ivec4 ztex = ivec4(0);\n");
     }
 
@@ -120,7 +120,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
             o.w("  vec4 sampleTex%u = texture(s_tex%u, %s)%s;\n", s, map, uv.c_str(), vkSwapString(u, tswap).c_str());
             o.w("  vec4 safeTex%u = (any(isnan(sampleTex%u)) || any(isinf(sampleTex%u))) ? vec4(0.0) : clamp(sampleTex%u, 0.0, 1.0);\n", s, s, s, s);
             o.w("  tex = ivec4(round(safeTex%u * 255.0));\n", s);
-            if (u.zTex) {
+            if ((u.zTex >> 2) & 3) {
                 o.w("  ztex = tex;\n");
             }
         } else {
@@ -199,7 +199,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
     // Alpha test.
     {
         uint32_t f0 = u.alphaFunc & 7, f1 = (u.alphaFunc >> 3) & 7, logic = (u.alphaFunc >> 6) & 3;
-        if (!(f0 == 7 && f1 == 7)) {
+        if (!alphaAlwaysPasses(u.alphaFunc)) {
             o.w("  float a = float(outi.a);\n");
             std::string t0 = vkAlphaTest(f0, "alphaRef.x");
             std::string t1 = vkAlphaTest(f1, "alphaRef.y");
@@ -208,7 +208,7 @@ std::string genVulkanFragmentShader(const ShaderUid& u) {
         }
     }
     // Z texture.
-    if (u.zTex) {
+    if ((u.zTex >> 2) & 3) {
         uint32_t type = u.zTex & 3, op = (u.zTex >> 2) & 3;
         o.w("  {\n    ivec4 zt = ztex;\n");
         if (type == 0) {

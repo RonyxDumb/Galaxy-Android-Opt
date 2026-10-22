@@ -11,6 +11,7 @@
 #include <atomic>
 #include <thread>
 #include <vector>
+#include <cassert>
 
 #include "vk_shadergen.h"
 #include "gx_shader_uid.h"
@@ -23,6 +24,31 @@ static uint32_t parseHex(const char* s) {
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && strcmp(argv[1], "--families") == 0) {
+        gpu::ShaderUid material{};
+        material.numTexGens = material.numTevStages = 1;
+        material.alphaFunc = 63;
+        auto family = gpu::uberShaderUid(material);
+        material.tevColor[0] = 0x123456;
+        assert(gpu::uberShaderUid(material) == family);
+        auto fs = gpu::genVulkanFragmentShader(family);
+        auto vs = gpu::genVulkanVertexShader(family);
+        assert(fs.find("gl_FragDepth") == std::string::npos);
+        assert(fs.find("discard") == std::string::npos);
+        assert(fs.find("v_tex1") == std::string::npos && vs.find("v_tex1") == std::string::npos);
+        material.zTex = 1; // Format bits survive GX_ZT_DISABLE.
+        assert(gpu::uberShaderUid(material) == family);
+        assert(gpu::genVulkanFragmentShader(material).find("gl_FragDepth") == std::string::npos);
+        material.zTex = 4;
+        assert(!(gpu::uberShaderUid(material) == family));
+        assert(gpu::genVulkanFragmentShader(gpu::uberShaderUid(material)).find("gl_FragDepth") != std::string::npos);
+        material.zTex = 0; material.numTevStages = 16;
+        assert(!(gpu::uberShaderUid(material) == family));
+        material.numTevStages = 1; material.alphaFunc = 6 | (7 << 3);
+        assert(!(gpu::uberShaderUid(material) == family));
+        assert(gpu::genVulkanFragmentShader(gpu::uberShaderUid(material)).find("discard") != std::string::npos);
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--state") == 0) {
         gpu::Builder builder{};
         builder.xfMem[0x600 + 10] = 1e18f;
@@ -54,7 +80,7 @@ int main(int argc, char** argv) {
         if (n != sizeof(uid)) return 4;
         bool universal = argv[2][0] == 'u';
         bool vertex = strcmp(argv[2], "vs") == 0 || strcmp(argv[2], "uvs") == 0;
-        if (universal) uid = gpu::uberShaderUid(uid.vtxFlags);
+        if (universal) uid = gpu::uberShaderUid(uid);
         std::string out = vertex ? gpu::genVulkanVertexShader(uid) : gpu::genVulkanFragmentShader(uid);
         fwrite(out.data(), 1, out.size(), stdout);
         return 0;

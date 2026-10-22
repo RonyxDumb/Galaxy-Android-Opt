@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Super Mario Galaxy</string>
+    <string name="game_starting">Avvio del gioco…</string>
     <string name="header_title">Super Mario Galaxy</string>
     <string name="header_subtitle">Standalone Mobile Port</string>
     <string name="section_source">Game Disc Image</string>

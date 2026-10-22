@@ -335,3 +335,66 @@ certificate, so this installs as an update to that second tester app without
 uninstalling it. APK and signing key remain outside Git.
 
 APK SHA-256: `0a7d513286176737746ef82ef3851567f0de64d37b96a757ddbd603c402fdb92`.
+
+## Low-end startup and rendering pass — 0.0.4-a34.7
+
+The user reports successful ROM extraction, followed by severe phone-wide lag,
+a long black startup and the still-visible sun/glow defect. This pass addresses
+specific costs and rendering errors found in code; it is not an on-device
+performance certification.
+
+- Android no longer compiles the entire extracted material inventory before
+  processing its first window, nor creates every exact pipeline at launch.
+  Startup prepares at most 12 complete generic pipelines, starting with title/UI
+  states and a bounded sample of previously observed runtime states. A native
+  probe checks that adding 5,000 future materials does not increase this budget.
+- Render/game threads no longer use a big-core-only affinity or priority -10.
+  The single specialization worker uses Android nice 10. Android can distribute
+  work while retaining CPU time for system UI and other foreground work.
+- Generic shaders retain only the material's texgen/channel/stage counts,
+  texture-unit mask, lighting enables, alpha-test requirement and Z-texture
+  requirement. TEV operations, matrices and other actual material data still
+  come from the original draw record. No flat-colour replacement is used.
+- Ordinary opaque shaders no longer statically write fragment depth or discard.
+  Specialized shaders also respect GX_ZT_DISABLE when nonzero format bits
+  remain set. Active Z-texture operations are preserved.
+- Half-resolution EFB texture copies now clear the entire source rectangle.
+  Previously the downsampled destination dimensions were reused for the clear,
+  leaving source pixels behind in effect passes. The production copy dispatcher
+  is tested for normal, half-sized, clipped/scaled and no-clear copies.
+- The compiled SPIR-V payload cache is limited to 32 MiB. Cache version 3
+  discards the bulk-warmed v2 cache on upgrade. Overflow programs remain usable
+  for the current pipeline without growing the resident/disk payload.
+- The unused extra presentation FXAA/bloom/saturation pipeline is removed.
+  Game-authored Wii effects remain. A simple startup indicator is dismissed
+  after the first successfully presented game frame.
+- The native resolution, original assets, game speed/FPS, camera mapping,
+  fixed joystick and touch star pointer profile are retained.
+
+Validation:
+
+- Complete ARM64 Release build with Android NDK r25c, CMake 3.31.6 and Ninja.
+  All game, launcher, reservation and installer targets link.
+- 110 discovered Python/native tests: 101 pass, 9 initially skip. Re-running
+  the 7 installer-task probes with JDK 17 passes all 7; the remaining 2 skips
+  require untracked original/cooked game assets. All 20 numerical Vulkan tests
+  pass using Mesa lavapipe, including 32 multi-stage material permutations
+  compared against both specialized and compact generic shader paths.
+- Focused graphics tests pass again after the final title/UI seed adjustment.
+  They exercise actual production queue/inventory/cache/copy code with fake
+  Android/driver services; cache tests use deterministic fake compiler output.
+- Java sources compile against Android API 34. APK signature verification
+  succeeds; version code 20, package com.openport.galaxyandroid.a34test2 and
+  signer match the existing a34.5/a34.6 installation.
+- The packaged native payload matches the freshly built stripped libraries.
+  Packaged installer assets are byte-identical to a34.6. LOC and include-case
+  checks pass; APKs, ROM data and signing keys are excluded from GitHub.
+
+Limits: no physical phone, game ROM or device trace is available here.
+First use of an unseen generic/raster state can still require driver pipeline
+creation on the render thread; this does not establish zero shader stutter.
+The EFB clear and disabled-Z fixes address proven errors, but the exact reported
+sun artifact and sustained low-end FPS still require a device comparison.
+The startup indicator/JNI handoff is compiled, not instrumented on Android.
+
+APK SHA-256: `fab17ea2ebbce2316c137b841d6e5f41815882bde109a41dcb86c032ed18e4f0`.

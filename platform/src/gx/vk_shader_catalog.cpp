@@ -59,6 +59,8 @@ void populateCanonicalGalaxyCatalog(ShaderInventory& inv) {
             ShaderUid u{};
             u.vtxFlags = 0x0051;
             u.hud = 1;
+            u.alphaFunc = 0x3f;
+            u.tevOrder[0] = 0x40; // TEXMAP0/TEXCOORD0 enabled, raster channel 0.
             u.numChans = chans;
             u.numTexGens = 1;
             u.numTevStages = 1;

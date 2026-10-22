@@ -13,7 +13,7 @@
 static std::atomic<int> built{0}, destroyed{0}, compiled{0};
 static std::mutex buildLock;
 static std::condition_variable buildCv;
-static bool holdBuild = false, entered = false, failDriver = false;
+static bool holdBuild = false, entered = false, failDriver = false, startup = false;
 static std::thread::id renderThread;
 static std::unordered_set<gpu::ShaderUid, gpu::ShaderUidHash> spirv;
 
@@ -33,8 +33,9 @@ bool compileVulkanShader(const ShaderUid& uid, std::vector<uint32_t>& vs, std::v
     if (uid.numTexGens == 99) return false;
     spirv.insert(uid); vs = fs = {1}; return true;
 }
-VkPipeline VkRenderer::buildPipeline(const PipelineKey&, const std::vector<uint32_t>&, const std::vector<uint32_t>&) {
+VkPipeline VkRenderer::buildPipeline(const PipelineKey& key, const std::vector<uint32_t>&, const std::vector<uint32_t>&) {
     assert(std::this_thread::get_id() != renderThread);
+    if (startup) assert(isUberShader(key.uid));
     std::unique_lock<std::mutex> lock(buildLock);
     entered = true; buildCv.notify_all();
     buildCv.wait(lock, [] { return !holdBuild; });
@@ -123,6 +124,29 @@ int main(int argc, char** argv) {
         assert(r.prepareFramePipelines(frame, gpu::HudMode::Inline));
         assert(!r.hasFailed() && !r.waitingForPipelines() && r.mPipelines.size() == 2);
         assert(r.mPipelineFailed.size() == 2);
+    } else if (!strcmp(argv[1], "startup")) {
+        startup = true;
+        r.mPipelines.clear();
+        r.mDevice = (VkDevice)(uintptr_t)1;
+        r.mEfbRenderPass = (VkRenderPass)(uintptr_t)1;
+        gpu::ShaderInventory inv;
+        inv.populateCanonicalGalaxyInventory();
+        for (uint32_t i = 0; i < 5000; i++) {
+            auto uid = frame.uids[0]; uid.tevColor[0] = i;
+            auto key = gpu::pipelineKeyFor(frame.items[0], uid);
+            inv.addEntry(uid, key, "future_level_material", false);
+            if (i < 100) inv.addEntry(uid, gpu::pipelineKeyFor(frame.items[1], uid), "runtime", true);
+        }
+        const auto keys = inv.startupPipelineKeys();
+        assert(!keys.empty() && keys.size() <= gpu::ShaderInventory::kStartupPipelineBudget);
+        assert(keys[0].uid.iref == 1 && keys[0].uid.alphaFunc == 0);
+        for (const auto& key : keys) assert(gpu::isUberShader(key.uid));
+        assert(!inv.verifyStartupReadiness());
+        std::thread prepare([&] { inv.prewarmStartupPipelines(r); }); prepare.join();
+        assert(inv.verifyStartupReadiness() && built == (int)keys.size());
+        const int firstBuilds = built;
+        std::thread repeat([&] { inv.prewarmStartupPipelines(r); }); repeat.join();
+        assert(built == firstBuilds);
     } else if (!strcmp(argv[1], "inventory")) {
         const auto dir = std::filesystem::temp_directory_path() / ("galaxy-inventory-" + std::to_string((uintptr_t)&r));
         std::filesystem::create_directories(dir);

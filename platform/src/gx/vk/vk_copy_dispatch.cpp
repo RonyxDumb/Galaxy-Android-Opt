@@ -22,6 +22,7 @@ void VkRenderer::executeCopyItem(VkCommandBuffer cmd, const Item& it, const Prep
     if (sx1 > target.width) sx1 = target.width;
     if (sy1 > target.height) sy1 = target.height;
     int dw = sx1 - sx0, dh = sy1 - sy0;
+    const int clearW = dw, clearH = dh;
 
     if (toXfb) {
         if (dw > 0 && dh > 0) {
@@ -189,10 +190,12 @@ void VkRenderer::executeCopyItem(VkCommandBuffer cmd, const Item& it, const Prep
             clearAtts[clearAttCount].clearValue.depthStencil = {(cp[8] & 0xFFFFFF) / 16777215.0f, 0};
             clearAttCount++;
         }
-        if (clearAttCount > 0 && dw > 0 && dh > 0) {
+        if (clearAttCount > 0 && clearW > 0 && clearH > 0) {
             VkClearRect clearRect{};
             clearRect.rect.offset = {sx0, sy0};
-            clearRect.rect.extent = {(uint32_t)dw, (uint32_t)dh};
+            // GX clears the source EFB rectangle, even when the destination
+            // texture is downsampled. Clearing the smaller copy leaves glow.
+            clearRect.rect.extent = {(uint32_t)clearW, (uint32_t)clearH};
             clearRect.baseArrayLayer = 0;
             clearRect.layerCount = 1;
             vkCmdClearAttachments(cmd, clearAttCount, clearAtts, 1, &clearRect);

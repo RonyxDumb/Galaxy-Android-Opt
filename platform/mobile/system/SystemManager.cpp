@@ -119,9 +119,28 @@ void SystemManager::elevateThreadPriority(int priority) {
     setpriority(PRIO_PROCESS, 0, priority);
 }
 
+void SystemManager::notifyFirstGameFrame(android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+    JavaVM* vm = app->activity->vm;
+    JNIEnv* env = nullptr;
+    const jint state = vm->GetEnv((void**)&env, JNI_VERSION_1_6);
+    const bool attached = state == JNI_EDETACHED;
+    if (attached && vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    if (!env) return;
+    jclass clazz = env->GetObjectClass(app->activity->clazz);
+    if (clazz) {
+        jmethodID method = env->GetStaticMethodID(clazz, "onGameFramePresented", "()V");
+        if (method) env->CallStaticVoidMethod(clazz, method);
+        env->DeleteLocalRef(clazz);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attached) vm->DetachCurrentThread();
+}
+
 extern "C" void port_pin_thread_to_performance_cores(void) {
-    mobile_system::SystemManager::pinThreadToPerformanceCores();
-    mobile_system::SystemManager::elevateThreadPriority(-10);
+    // Legacy entry point used by the game thread. The Android scheduler is
+    // responsible for CPU placement, including thermal and system UI needs.
+    mobile_system::SystemManager::elevateThreadPriority(0);
 }
 
 void SystemManager::triggerHaptic(android_app* app, int ms) {

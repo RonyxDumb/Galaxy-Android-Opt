@@ -1,5 +1,8 @@
 #include "gx/vk/vk_common.h"
 #include "gx/vk_shader_inventory.h"
+#if defined(__ANDROID__)
+#include <sys/resource.h>
+#endif
 
 namespace gpu {
 
@@ -34,6 +37,9 @@ void VkRenderer::startShaderWorker() {
         mShaderStop = false;
     }
     mShaderThread = std::thread([this]() {
+#if defined(__ANDROID__)
+        setpriority(PRIO_PROCESS, 0, 10);
+#endif
         for (;;) {
             PipelineRequest request;
             {
