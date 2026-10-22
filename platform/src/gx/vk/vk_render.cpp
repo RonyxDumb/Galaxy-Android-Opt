@@ -58,8 +58,9 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
         return false;
     }
 
-    flushDeferredDeletes();
     trimFrameCaches(mFrameNumber);
+    evictCopies(p.number);
+    flushDeferredDeletes();
 
     for (auto& item : mStagingBuffersToFree) {
         if (item.buffer != VK_NULL_HANDLE) vkDestroyBuffer(mDevice, item.buffer, nullptr);
@@ -175,7 +176,6 @@ bool VkRenderer::render(VkTarget& target, const EyeView* eye, VkTarget* hud, Hud
     mRenderSignaledSem = true;
     target.hasValidContent = true;
     target.colorLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    evictCopies(p.number);
     return true;
 }
 

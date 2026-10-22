@@ -2,6 +2,12 @@
 <resources>
     <string name="app_name">Super Mario Galaxy</string>
     <string name="game_starting">Avvio del gioco…</string>
+    <string name="crash_title">Il gioco si è interrotto</string>
+    <string name="crash_message">Puoi salvare il log dell’errore prima di riprovare. Il log aiuta a individuare il punto del crash.</string>
+    <string name="crash_retry">Riprova</string>
+    <string name="crash_export">Esporta log</string>
+    <string name="crash_export_done">Log salvato.</string>
+    <string name="crash_export_error">Impossibile salvare il log.</string>
     <string name="header_title">Super Mario Galaxy</string>
     <string name="header_subtitle">Standalone Mobile Port</string>
     <string name="section_source">Game Disc Image</string>

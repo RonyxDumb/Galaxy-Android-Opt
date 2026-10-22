@@ -398,3 +398,68 @@ sun artifact and sustained low-end FPS still require a device comparison.
 The startup indicator/JNI handoff is compiled, not instrumented on Android.
 
 APK SHA-256: `fab17ea2ebbce2316c137b841d6e5f41815882bde109a41dcb86c032ed18e4f0`.
+
+## Format-aware EFB copies and resource lifetime — 0.0.4-a34.8
+
+The user still sees incorrect lighting/reflections and reports a crash after
+"Play This File". No device stack trace or original game assets are available.
+This build corrects independently established rendering/resource defects;
+it does not certify that the reported scene or crash is resolved on the phone.
+
+- A GPU compute copy replaces the unconditional RGBA blit for EFB textures.
+  It handles source RGB8/RGBA6/RGB565/depth interpretation, intensity, channel
+  selection, destination quantization/alpha and half-size box averaging. The
+  XFB display path is retained. One compute pipeline is prepared at renderer
+  initialization; copying an effect does not compile a shader or read pixels
+  back to the CPU. Source/depth/destination layout barriers are explicit.
+- GPU-only EFB textures no longer expire after 8 recorder/16 renderer frames.
+  Each recording retains a snapshot of live addresses plus references already
+  used in that frame, including those invalidated by a later CPU write.
+- Sampler pools grow in pages rather than resetting during command recording.
+  Cached sets remember their owning pool. Replaced/deleted views invalidate
+  cached bindings immediately; set/image deletion occurs after completed
+  submissions. Copy-image replacement is published only after all allocations
+  succeed, preserving the earlier image if creation fails.
+- Both vertex paths correctly route CLR1 to channel zero when CLR0 is absent.
+  Generated-source shader cache keys include the changed source automatically.
+- Native crash capture uses an already-open private file and async-signal-safe
+  writes, records signal/address/PC/image base and ARM64 LR/SP, and chains the
+  previous signal action. It removes the filesystem-wide sync and unsafe
+  stdio/logger calls from the handler. On the next normal app launch, a
+  recovery dialog offers retry and document-based log export. Game logging now
+  uses the same app-private directory. Routine startup remains extraction/launch.
+
+Evidence:
+
+- Complete ARM64 Release game/main/reserve/installer build with NDK r25c.
+  API 34 Java compilation/dexing, APK signing and alignment checks pass.
+- 115 discovered tests: 113 pass, two skip because original/cooked game assets
+  are untracked. Numerical lighting tests run both specialized and generic
+  paths, including the single-CLR1 case.
+- The EFB test executes production Vulkan dispatch and descriptor allocation
+  on Mesa lavapipe for 104 source/format/downsample combinations, checking
+  byte-exact output against an independent integer oracle. It passes again
+  with explicitly required Khronos validation, synchronization validation
+  enabled and no reported validation errors. This is not an Android/Mali run.
+- Production resource probes pass saturation, deferred retirement, destroyed
+  view/handle reuse, persistent captures and failed/successful replacement.
+  Signal probes cover normal exit, render/worker fatal signals and repeated
+  handler installation; the latter is rerun after the final guard change.
+- Packaged native payloads match the fresh stripped build. Only libgame.so
+  changes among the 15 native libraries; installer scripts match a34.7.
+  LOC/include-case audits and patch whitespace checks pass.
+
+Version code 21 keeps `com.openport.galaxyandroid.a34test2`, label
+`Super Mario Galaxy` and signer SHA-256
+`04abe026d59a90c9451c0c8dcb775626b6249ebcf77175b07523e2e79a788c9c`.
+The build can update a34.5/a34.6/a34.7 without uninstalling that app.
+APK size: 17,949,811 bytes. APK SHA-256:
+`612c4bb7d6e054ae42ec03cc814c62f86215bef4b460b226cf880e1e55a6d997`.
+APK, signing material and ROM data are excluded from GitHub.
+
+Research, implementation paths, primary references and outstanding fidelity
+limits are in [WII_RENDERING_ANDROID.md](WII_RENDERING_ANDROID.md). In particular,
+copy filtering/gamma, selective RGB/alpha clears and full RAM/TMEM coherence
+are not claimed complete. No sustained low-end FPS or real "Play This File"
+transition has been measured here. If that crash persists, reopening the app
+offers **Esporta log** before retrying.

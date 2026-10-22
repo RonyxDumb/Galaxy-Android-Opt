@@ -20,6 +20,7 @@ struct VkTarget {
     VkImage depthImage = VK_NULL_HANDLE;
     VkDeviceMemory depthMemory = VK_NULL_HANDLE;
     VkImageView depthView = VK_NULL_HANDLE;
+    VkImageView depthSampleView = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
     VkImageLayout colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     bool hasValidContent = false;
@@ -57,6 +58,7 @@ struct SamplerDescKeyHash {
 struct SamplerSetEntry {
     VkDescriptorSet set = VK_NULL_HANDLE;
     uint64_t lastUse = 0;
+    VkDescriptorPool pool = VK_NULL_HANDLE;
 };
 
 struct FrameResource {

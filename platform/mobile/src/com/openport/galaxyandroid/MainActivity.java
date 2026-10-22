@@ -44,11 +44,17 @@ public class MainActivity extends Activity {
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivityForResult(intent, PICK_ROM);
         });
-        if (isGameDataReady(this) && !getIntent().getBooleanExtra("require_rom", false)) launchGame();
+        if (!CrashReport.prompt(this, this::launchGame)
+                && isGameDataReady(this) && !getIntent().getBooleanExtra("require_rom", false)) launchGame();
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == CrashReport.EXPORT) {
+            if (result == RESULT_OK && data != null && data.getData() != null) CrashReport.export(this, data.getData());
+            CrashReport.prompt(this, this::launchGame);
+            return;
+        }
         if (request != PICK_ROM || result != RESULT_OK || data == null || data.getData() == null || installing) return;
         Uri uri = data.getData();
         String name = StorageUtils.getDisplayName(this, uri);

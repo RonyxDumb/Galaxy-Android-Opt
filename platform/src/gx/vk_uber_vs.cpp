@@ -57,8 +57,9 @@ vec4 lightChannel(uint ctrl, vec4 vertex, vec4 material, vec4 ambient,
     VulkanShaderGenOut o;
     o.s = src;
     o.w("  uint ub = fetch_recs(rb + %uu);\n  v_uid = ub;\n", (unsigned)kRecShaderUid);
-    o.w("  vec4 vertex0 = %s;\n", (uid.vtxFlags & VF_CLR0) ? "a_clr0" : "vec4(1.0)");
-    o.w("  vec4 vertex1 = %s;\n", (uid.vtxFlags & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
+    const bool both = (uid.vtxFlags & (VF_CLR0 | VF_CLR1)) == (VF_CLR0 | VF_CLR1);
+    o.w("  vec4 vertex0 = %s;\n", (uid.vtxFlags & VF_CLR0) ? "a_clr0" : (uid.vtxFlags & VF_CLR1) ? "a_clr1" : "vec4(1.0)");
+    o.w("  vec4 vertex1 = %s;\n", both ? "a_clr1" : "vec4(1.0)");
     for (uint32_t c = 0; c < 2; c++) {
         o.w("  v_clr%u = vec4(0.0);\n", c);
         if (c >= uid.numChans) continue;

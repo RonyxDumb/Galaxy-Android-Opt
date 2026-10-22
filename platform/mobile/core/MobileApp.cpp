@@ -162,7 +162,7 @@ void MobileApp::updateInputState() {
 
 
 void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
-    mobile_system::SystemManager::installCrashHandlers();
+    mobile_system::SystemManager::installCrashHandlers(app->activity->internalDataPath);
     // Let Android distribute game/render work across cores. Child compiler
     // threads must not inherit a high priority and a big-core-only affinity.
 
@@ -195,14 +195,7 @@ void MobileApp::run(android_app* app, uintptr_t windowBase, size_t windowSize) {
     if (mobile_ui::UIOverlay::get().settings().batterySaver) initialFps = 30;
     mobile_system::SystemManager::setPreferredRefreshRate(app, (float)initialFps);
 
-    std::string primaryLog = "/sdcard/GalaxyData/galaxy_log.txt";
-    FILE* tst = fopen(primaryLog.c_str(), "a");
-    if (tst) {
-        fclose(tst);
-        port_log_file(primaryLog.c_str());
-    } else {
-        port_log_file((ext + "/galaxy_log.txt").c_str());
-    }
+    port_log_file((internalPath + "/galaxy_log.txt").c_str());
 
     mDataRoot = mobile_system::StorageManager::findGameData(ext, internalPath);
     mobile_render::VulkanLifecycle::initCaches(internalPath, mDataRoot);

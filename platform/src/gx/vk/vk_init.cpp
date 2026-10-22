@@ -72,6 +72,11 @@ bool VkRenderer::init(ANativeWindow* window) {
         shutdown();
         return false;
     }
+    if (!createEfbCopyPipeline()) {
+        LOGE("Failed to create format-aware EFB copy pipeline");
+        shutdown();
+        return false;
+    }
 
     {
         VkImageCreateInfo ici{};

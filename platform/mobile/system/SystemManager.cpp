@@ -1,15 +1,14 @@
 #include "SystemManager.h"
+#include "CrashHandler.h"
 
 #include <android/log.h>
 #include <dlfcn.h>
 #include <jni.h>
 #include <math.h>
 #include <sched.h>
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
-#include <time.h>
 #include <unistd.h>
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "GalaxySystem", __VA_ARGS__)
@@ -17,51 +16,8 @@
 
 namespace mobile_system {
 
-namespace {
-
-static void crashSignalHandler(int sig, siginfo_t* info, void* ucontext) {
-    (void)ucontext;
-    const char* sigName = "UNKNOWN";
-    if (sig == SIGSEGV) sigName = "SIGSEGV (Segmentation Fault)";
-    else if (sig == SIGBUS) sigName = "SIGBUS (Bus Error / Alignment)";
-    else if (sig == SIGFPE) sigName = "SIGFPE (Arithmetic Exception)";
-    else if (sig == SIGILL) sigName = "SIGILL (Illegal Instruction)";
-    else if (sig == SIGABRT) sigName = "SIGABRT (Abort)";
-
-    LOGE("================ FATAL NATIVE CRASH ================");
-    LOGE("Signal: %d (%s) at address %p", sig, sigName, info ? info->si_addr : nullptr);
-
-    FILE* f = fopen("/sdcard/GalaxyData/galaxy_crash.log", "a");
-    if (f) {
-        time_t t = time(nullptr);
-        char* ct = ctime(&t);
-        if (ct) {
-            char* nl = strchr(ct, '\n');
-            if (nl) *nl = '\0';
-        }
-        fprintf(f, "[%s] FATAL SIGNAL %d (%s) at address %p\n",
-                ct ? ct : "unknown time", sig, sigName, info ? info->si_addr : nullptr);
-        fflush(f);
-        fclose(f);
-    }
-    sync();
-
-    signal(sig, SIG_DFL);
-    raise(sig);
-}
-
-}  // namespace
-
-void SystemManager::installCrashHandlers() {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_sigaction = crashSignalHandler;
-    sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
-    sigaction(SIGSEGV, &sa, nullptr);
-    sigaction(SIGBUS, &sa, nullptr);
-    sigaction(SIGFPE, &sa, nullptr);
-    sigaction(SIGILL, &sa, nullptr);
-    sigaction(SIGABRT, &sa, nullptr);
+void SystemManager::installCrashHandlers(const char* privateDirectory) {
+    installCrashHandler(privateDirectory);
 }
 
 void SystemManager::pinThreadToPerformanceCores() {

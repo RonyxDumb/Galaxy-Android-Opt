@@ -124,6 +124,7 @@ struct Frame {
     WordBuffer cmds;
     WordBuffer verts;
     std::vector<std::shared_ptr<TexImage>> textures;
+    std::vector<uint32_t> liveEfbCopies;
     uint64_t number = 0;
     uint32_t xfbCopies = 0;  // EFB->XFB copies in this frame
     uint32_t draws = 0;
@@ -132,6 +133,7 @@ struct Frame {
         cmds.clear();
         verts.clear();
         textures.clear();
+        liveEfbCopies.clear();
         xfbCopies = 0;
         draws = 0;
     }

@@ -120,6 +120,7 @@ void Recorder::efbCopy(bool toXfb, bool clear) {
     EfbCopyInfo info{id, w, h, fmt, frameNumber, 0};
     info.memHash = hashBytes(memPtr(addr), 64);
     efbCopies[addr] = info;
+    frame->liveEfbCopies.push_back(addr);
     texDirty = true;
     bindEpoch++;
 }
@@ -179,16 +180,10 @@ void Recorder::endFrame() {
             }
         }
     }
+    snapshotEfbCopies();
     frame = frameQueue().publish(std::move(frame));
     resetBindings();
     snapshot();
-    for (auto it = efbCopies.begin(); it != efbCopies.end();) {
-        if (frameNumber - it->second.frame > 8) {
-            it = efbCopies.erase(it);
-        } else {
-            ++it;
-        }
-    }
     if (texCache.size() > 1024) {
         for (auto it = texCache.begin(); it != texCache.end();) {
             if (frameNumber - it->second.checkedFrame > 600) {

@@ -75,7 +75,7 @@ VkTarget VkRenderer::createTarget(int w, int h) {
     // 2. Depth/stencil attachment image (dynamic supported depth format)
     VkImageCreateInfo dici = ici;
     dici.format = mDepthFormat;
-    dici.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    dici.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
     if (vkCreateImage(mDevice, &dici, nullptr, &t.depthImage) != VK_SUCCESS) {
         destroyTarget(t);
@@ -117,6 +117,11 @@ VkTarget VkRenderer::createTarget(int w, int h) {
     divci.subresourceRange.levelCount = 1;
     divci.subresourceRange.layerCount = 1;
     if (vkCreateImageView(mDevice, &divci, nullptr, &t.depthView) != VK_SUCCESS) {
+        destroyTarget(t);
+        return {};
+    }
+    divci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (vkCreateImageView(mDevice, &divci, nullptr, &t.depthSampleView) != VK_SUCCESS) {
         destroyTarget(t);
         return {};
     }
@@ -172,6 +177,7 @@ void VkRenderer::destroyTarget(VkTarget& target) {
             vkDestroyImageView(mDevice, target.depthView, nullptr);
             target.depthView = VK_NULL_HANDLE;
         }
+        if (target.depthSampleView) vkDestroyImageView(mDevice, target.depthSampleView, nullptr);
         if (target.depthImage != VK_NULL_HANDLE) {
             vkDestroyImage(mDevice, target.depthImage, nullptr);
             target.depthImage = VK_NULL_HANDLE;
@@ -193,9 +199,9 @@ void VkRenderer::invalidateSamplerDescSetsForView(VkImageView view) {
             if (it->first.views[u] == view) { hasView = true; break; }
         }
         if (hasView) {
-            if (it->second.set != VK_NULL_HANDLE && mDescriptorPool != VK_NULL_HANDLE) {
-                vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &it->second.set);
-            }
+            // Earlier draws in this command buffer may still reference it.
+            // Remove it from lookups now, free only after the submission fence.
+            mRetiredImageSets.push_back(it->second);
             it = mSamplerDescSets.erase(it);
             erased = true;
         } else {
@@ -206,66 +212,14 @@ void VkRenderer::invalidateSamplerDescSetsForView(VkImageView view) {
     if (erased) mSamplerDescEpoch++;
 }
 
-VkCopyTex& VkRenderer::getCopyTex(uint64_t key, int w, int h) {
-    VkCopyTex& c = mCopies[key];
-    if (c.image != VK_NULL_HANDLE && (c.w != w || c.h != h)) {
-        invalidateSamplerDescSetsForView(c.view);
-        queueVkTextureDelete((uint64_t)c.image, (uint64_t)c.memory, (uint64_t)c.view);
-        c.view = VK_NULL_HANDLE;
-        c.image = VK_NULL_HANDLE;
-        c.memory = VK_NULL_HANDLE;
-    }
-    if (c.image == VK_NULL_HANDLE) {
-        c.w = w;
-        c.h = h;
-        VkImageCreateInfo ici{};
-        ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        ici.imageType = VK_IMAGE_TYPE_2D;
-        ici.extent.width = (uint32_t)w;
-        ici.extent.height = (uint32_t)h;
-        ici.extent.depth = 1;
-        ici.mipLevels = 1;
-        ici.arrayLayers = 1;
-        ici.format = VK_FORMAT_R8G8B8A8_UNORM;
-        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        ici.samples = VK_SAMPLE_COUNT_1_BIT;
-        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateImage(mDevice, &ici, nullptr, &c.image) == VK_SUCCESS) {
-            VkMemoryRequirements mr;
-            vkGetImageMemoryRequirements(mDevice, c.image, &mr);
-            uint32_t memType = findMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            if (memType == ~0u) {
-                memType = findMemoryType(mr.memoryTypeBits, 0);
-            }
-            if (memType != ~0u) {
-                VkMemoryAllocateInfo ai{};
-                ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-                ai.allocationSize = mr.size;
-                ai.memoryTypeIndex = memType;
-                if (vkAllocateMemory(mDevice, &ai, nullptr, &c.memory) == VK_SUCCESS &&
-                    vkBindImageMemory(mDevice, c.image, c.memory, 0) == VK_SUCCESS) {
-                    VkImageViewCreateInfo ivci{};
-                    ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                    ivci.image = c.image;
-                    ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                    ivci.format = VK_FORMAT_R8G8B8A8_UNORM;
-                    ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                    ivci.subresourceRange.levelCount = 1;
-                    ivci.subresourceRange.layerCount = 1;
-                    vkCreateImageView(mDevice, &ivci, nullptr, &c.view);
-                }
-            }
-        }
-    }
-    return c;
-}
-
 void VkRenderer::evictCopies(uint64_t currentFrame) {
-    const uint64_t kKeepFrames = 16;
+    (void)currentFrame;
+    if (!mCurrentFrame) return;
+    const auto& addresses = mCurrentFrame->liveEfbCopies;
+    const std::unordered_set<u32> live(addresses.begin(), addresses.end());
     for (auto it = mCopies.begin(); it != mCopies.end();) {
-        if (it->first != kXfbCopyKey && it->second.frame + kKeepFrames < currentFrame) {
+        const u32 address = u32(it->first) << 5;
+        if (it->first != kXfbCopyKey && !live.count(address)) {
             invalidateSamplerDescSetsForView(it->second.view);
             queueVkTextureDelete((uint64_t)it->second.image, (uint64_t)it->second.memory, (uint64_t)it->second.view);
             it = mCopies.erase(it);

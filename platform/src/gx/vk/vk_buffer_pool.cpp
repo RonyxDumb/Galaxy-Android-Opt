@@ -14,8 +14,8 @@ VkFormat VkRenderer::findSupportedDepthFormat() {
     for (VkFormat format : depthFormats) {
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(mPhysicalDevice, format, &props);
-        if ((props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ==
-            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+        const auto required = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        if ((props.optimalTilingFeatures & required) == required) {
             LOGI("Selected Vulkan Depth/Stencil Format: %d", format);
             return format;
         }

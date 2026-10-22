@@ -162,6 +162,7 @@ void VkRenderer::shutdown() {
 
         flushDeferredDeletes();
 
+        destroyEfbCopyPipeline();
         for (auto& pair : mCopies) {
             if (pair.second.view != VK_NULL_HANDLE) vkDestroyImageView(mDevice, pair.second.view, nullptr);
             if (pair.second.image != VK_NULL_HANDLE) vkDestroyImage(mDevice, pair.second.image, nullptr);
@@ -215,10 +216,10 @@ void VkRenderer::shutdown() {
             vkDestroyPipelineLayout(mDevice, mPipelineLayout, nullptr);
             mPipelineLayout = VK_NULL_HANDLE;
         }
-        if (mDescriptorPool != VK_NULL_HANDLE) {
-            vkDestroyDescriptorPool(mDevice, mDescriptorPool, nullptr);
-            mDescriptorPool = VK_NULL_HANDLE;
-        }
+        for (auto pool : mSamplerPools) vkDestroyDescriptorPool(mDevice, pool, nullptr);
+        mSamplerPools.clear();
+        mRetiredImageSets.clear();
+        mDescriptorPool = VK_NULL_HANDLE;
         if (mStaticDescPool != VK_NULL_HANDLE) {
             vkDestroyDescriptorPool(mDevice, mStaticDescPool, nullptr);
             mStaticDescPool = VK_NULL_HANDLE;

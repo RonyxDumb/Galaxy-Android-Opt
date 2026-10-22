@@ -85,6 +85,13 @@ public:
   bool createCommandPool();
   bool createSyncObjects();
   bool createDescriptorLayouts();
+  bool growSamplerPool();
+  VkDescriptorSet allocateImageSet(VkDescriptorSetLayout layout, VkDescriptorPool& pool);
+  void releaseRetiredImageSets();
+  bool createEfbCopyPipeline();
+  void destroyEfbCopyPipeline();
+  bool copyEfbTexture(VkCommandBuffer cmd, VkTarget& target, VkCopyTex& dst,
+                      int x, int y, int w, int h, uint32_t ctrl, uint32_t pixelFormat);
   bool createPresentationPipeline();
   void destroyPresentationPipeline();
   bool createUiPipeline();
@@ -196,9 +203,15 @@ public:
   VkDescriptorSetLayout mStorageDescLayout = VK_NULL_HANDLE;
   VkDescriptorSetLayout mTextureDescLayout = VK_NULL_HANDLE;
   VkDescriptorPool mDescriptorPool = VK_NULL_HANDLE;
+  std::vector<VkDescriptorPool> mSamplerPools;
+  std::vector<SamplerSetEntry> mRetiredImageSets;
   VkDescriptorPool mStaticDescPool = VK_NULL_HANDLE;
   VkPipelineLayout mPipelineLayout = VK_NULL_HANDLE;
   VkPipelineCache mPipelineCache = VK_NULL_HANDLE;
+  VkDescriptorSetLayout mCopyDescLayout = VK_NULL_HANDLE;
+  VkPipelineLayout mCopyPipelineLayout = VK_NULL_HANDLE;
+  VkPipeline mCopyPipeline = VK_NULL_HANDLE;
+  VkSampler mCopySampler = VK_NULL_HANDLE;
 
   // Presentation pipeline
   VkDescriptorSetLayout mPresentDescLayout = VK_NULL_HANDLE;
